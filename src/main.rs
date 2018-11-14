@@ -2,7 +2,8 @@ extern crate libc;
 
 use std::env::{args, var, VarError};
 use std::fs::{File, read_dir};
-use std::io::{BufRead, BufReader, stdin};
+use std::io::{BufRead, BufReader, stdin, stdout};
+use std::io::Write;
 use std::path::PathBuf;
 
 use libc::{execve, fork};
@@ -58,6 +59,7 @@ fn read_and_execute(reader: &mut BufRead, interactive: bool) {
 
 fn interact(reader: &mut BufRead, prompt: &str) {
     print!("{} ", prompt);
+    stdout().flush().unwrap();
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => {
@@ -68,6 +70,7 @@ fn interact(reader: &mut BufRead, prompt: &str) {
             }
         }
         print!("{} ", prompt);
+        stdout().flush().unwrap();
     }
 }
 
