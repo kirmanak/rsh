@@ -1,6 +1,7 @@
 extern crate libc;
 
 use std::env::args;
+use std::env::var;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
 use std::process::Command;
@@ -56,7 +57,8 @@ fn get_prompt() -> String {
 }
 
 fn get_output(program: &str) -> Result<String> {
-    let output = Command::new(program).output()?;
+    let path = var("PATH").unwrap_or("/usr/bin".to_string());
+    let output = Command::new(program).env("PATH", path).output()?;
     let stdout = output.stdout;
     let parse_result = String::from_utf8(stdout);
     match parse_result {
