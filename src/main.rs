@@ -1,64 +1,75 @@
 extern crate libc;
 
-use std::env::{args, var};
-use std::fs::{File, read_dir};
-use std::io::{BufRead, BufReader, stdin, stdout, Write};
-use std::path::PathBuf;
-
-use libc::{execve, fork};
+use std::env::args;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
+use std::process::Command;
 
 fn main() {
-    if args().len() > 1 {
-        for open_result in args().skip(1).map(File::open) {
-            match open_result {
-                Ok(file) => {
-                    let mut reader = BufReader::new(file);
-                    read_and_execute(&mut reader, false);
-                }
-                Err(error) => {
-                    println_error(error.to_string().as_str())
-                }
-            }
-        }
+    let args: Vec<String> = args().skip(1) // skipping the name of the shell
+        .filter(|arg| !arg.starts_with('-')) // filtering unsupported options
+        .collect();
+    if args.len() > 0 {
+        iterate_through_args(&args);
     } else {
         let stdin = stdin();
-        let mut reader = stdin.lock();
-        read_and_execute(&mut reader, true);
+        interact(&mut stdin.lock());
+    }
+}
+
+fn check_file(name: &str) -> bool {
+    true
+}
+
+fn iterate_through_args(args: &Vec<String>) {
+    for argument in args {
+        let open_result = File::open(&argument);
+        match open_result {
+            Ok(file) => {
+                interpret(&mut BufReader::new(file));
+            }
+            Err(error) => {
+                let text = format!("{}: {}", &argument, &error);
+                println_error(text.as_str());
+                break;
+            }
+        }
+    }
+}
+
+fn is_login() -> bool {
+    let mut args = args();
+    if args.next().unwrap().starts_with('-') {
+        args.len() == 0 //we were invoked as -<something> and we had no arguments
+    } else if args.len() == 1 {
+        args.next().unwrap().eq(&"-l".to_string()) // or we were invoked only with the -l flag
+    } else {
+        false
     }
 }
 
 fn get_prompt() -> String {
-    let default = "hostname";
-    if let Some(path) = find_program("hostname") {
-        path.to_str().unwrap_or(default).to_string()
-    } else {
-        default.to_string()
-    }
+    get_output("hostname")
+        .unwrap_or("hostname".to_string())
+        .trim()
+        .to_string()
 }
 
-fn find_program(name: &str) -> Option<PathBuf> {
-    for dir_path in var("PATH").ok()?.split(':') {
-        if let Ok(files) = read_dir(dir_path) {
-            for file in files.filter(Result::is_ok).map(Result::unwrap) {
-                if file.file_name().to_str().unwrap().eq(name) {
-                    return Some(file.path());
-                }
-            }
+fn get_output(program: &str) -> Result<String> {
+    let output = Command::new(program).output()?;
+    let stdout = output.stdout;
+    let parse_result = String::from_utf8(stdout);
+    match parse_result {
+        Ok(stdout) => Ok(stdout),
+        Err(error) => {
+            Err(Error::new(ErrorKind::InvalidData, error))
         }
     }
-    None
 }
 
-fn read_and_execute(reader: &mut BufRead, interactive: bool) {
-    if interactive {
-        interact(reader, get_prompt().as_str());
-    } else {
-        interpret(reader)
-    }
-}
-
-fn interact(reader: &mut BufRead, prompt: &str) {
-    print_prompt(prompt);
+fn interact(reader: &mut BufRead) {
+    let prompt = get_prompt();
+    print_prompt(&prompt);
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => {
@@ -68,7 +79,7 @@ fn interact(reader: &mut BufRead, prompt: &str) {
                 println_error(error.to_string().as_str());
             }
         }
-        print_prompt(prompt);
+        print_prompt(&prompt);
     }
 }
 
@@ -90,18 +101,9 @@ fn parse(line: &str) {
 }
 
 fn fork_child() {
-    let id = unsafe { fork() };
-    let filename = "/usr/bin/ls";
-    match id {
-        -1 => (),
-        0 => (),
-        _ => unsafe {
-            let filename = filename.as_ptr() as *const i8;
-            let argv = [filename, std::ptr::null()].as_ptr();
-            let envp = [std::ptr::null()].as_ptr();
-            execve(filename, argv, envp);
-        }
-    }
+    let output = Command::new("ls").arg("-l").arg("-a").output().expect("ls failed to start");
+    println!("{}", &String::from_utf8(output.stdout).unwrap());
+
 }
 
 fn println_error(text: &str) {
