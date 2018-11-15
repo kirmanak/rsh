@@ -17,7 +17,7 @@ fn main() {
                     read_and_execute(&mut reader, false);
                 }
                 Err(error) => {
-                    eprintln!("{}", error);
+                    println_error(error.to_string().as_str())
                 }
             }
         }
@@ -30,9 +30,9 @@ fn main() {
 
 fn get_prompt() -> &'static str {
     if let Ok(path) = find_program("hostname") {
-        "program found%"
+        "program found"
     } else {
-        "hostname%"
+        "hostname"
     }
 }
 
@@ -58,19 +58,17 @@ fn read_and_execute(reader: &mut BufRead, interactive: bool) {
 }
 
 fn interact(reader: &mut BufRead, prompt: &str) {
-    print!("{} ", prompt);
-    stdout().flush().unwrap();
+    print_prompt(prompt);
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => {
                 execute(&line)
             }
             Err(error) => {
-                eprintln!("{}", error);
+                println_error(error.to_string().as_str());
             }
         }
-        print!("{} ", prompt);
-        stdout().flush().unwrap();
+        print_prompt(prompt);
     }
 }
 
@@ -81,14 +79,13 @@ fn interpret(reader: &mut BufRead) {
                 execute(&line)
             }
             Err(error) => {
-                eprintln!("{}", error);
+                println_error(error.to_string().as_str());
             }
         }
     }
 }
 
 fn execute(line: &str) {
-    println!("{}", line);
 }
 
 fn fork_child() {
@@ -105,8 +102,17 @@ fn fork_child() {
             let filename = filename.as_ptr() as *const i8;
             let argv = [filename, std::ptr::null()].as_ptr();
             let envp = [std::ptr::null()].as_ptr();
-            println!("{}", execve(filename, argv, envp));
-            println!("{}", String::from_raw_parts(filename as *mut u8, length, length));
+            execve(filename, argv, envp);
         }
     }
 }
+
+fn println_error(text: &str) {
+    eprintln!("{}", text);
+}
+
+fn print_prompt(prompt: &str) {
+    print!("{}% ", prompt);
+    stdout().flush().unwrap();
+}
+
