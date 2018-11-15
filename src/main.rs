@@ -1,9 +1,8 @@
 extern crate libc;
 
-use std::env::{args, var, VarError};
+use std::env::{args, var};
 use std::fs::{File, read_dir};
-use std::io::{BufRead, BufReader, stdin, stdout};
-use std::io::Write;
+use std::io::{BufRead, BufReader, stdin, stdout, Write};
 use std::path::PathBuf;
 
 use libc::{execve, fork};
@@ -28,30 +27,31 @@ fn main() {
     }
 }
 
-fn get_prompt() -> &'static str {
-    if let Ok(path) = find_program("hostname") {
-        "program found"
+fn get_prompt() -> String {
+    let default = "hostname";
+    if let Some(path) = find_program("hostname") {
+        path.to_str().unwrap_or(default).to_string()
     } else {
-        "hostname"
+        default.to_string()
     }
 }
 
-fn find_program(name: &str) -> Result<PathBuf, VarError> {
-    for dir_path in var("PATH")?.split(':') {
+fn find_program(name: &str) -> Option<PathBuf> {
+    for dir_path in var("PATH").ok()?.split(':') {
         if let Ok(files) = read_dir(dir_path) {
             for file in files.filter(Result::is_ok).map(Result::unwrap) {
                 if file.file_name().to_str().unwrap().eq(name) {
-                    return Ok(file.path());
+                    return Some(file.path());
                 }
             }
         }
     }
-    Err(VarError::NotPresent)
+    None
 }
 
 fn read_and_execute(reader: &mut BufRead, interactive: bool) {
     if interactive {
-        interact(reader, get_prompt());
+        interact(reader, get_prompt().as_str());
     } else {
         interpret(reader)
     }
@@ -62,7 +62,7 @@ fn interact(reader: &mut BufRead, prompt: &str) {
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => {
-                execute(&line)
+                parse(&line)
             }
             Err(error) => {
                 println_error(error.to_string().as_str());
@@ -76,25 +76,22 @@ fn interpret(reader: &mut BufRead) {
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => {
-                execute(&line)
+                parse(&line)
             }
             Err(error) => {
                 println_error(error.to_string().as_str());
+                break;
             }
         }
     }
 }
 
-fn execute(line: &str) {
+fn parse(line: &str) {
 }
 
 fn fork_child() {
-    let id;
-    unsafe {
-        id = fork();
-    }
+    let id = unsafe { fork() };
     let filename = "/usr/bin/ls";
-    let length = filename.len();
     match id {
         -1 => (),
         0 => (),
