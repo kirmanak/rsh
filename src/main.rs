@@ -1,14 +1,22 @@
-use std::env::args;
-use std::env::var;
-use std::fs::File;
+extern crate libc;
+
+use std::env::{args, var};
+use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
+use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
 use std::process::Command;
+
+use libc::{getgid, getpwuid, getuid, strlen};
 
 use splitter::split_arguments;
 
 mod splitter;
 
 fn main() {
+    let passwd_entry = unsafe { getpwuid(getuid()) };
+    let home = unsafe { wrap_string((*passwd_entry).pw_dir) };
+    let home = PathBuf::from(home);
     let args: Vec<String> = args().skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering unsupported options
         .collect();
@@ -20,8 +28,24 @@ fn main() {
     }
 }
 
-fn check_file(name: &str) -> bool {
-    true
+/// Checks whether the file is readable and either is owned by the current user
+/// or the current user's real group ID matches the file's group ID
+fn check_file(path: &PathBuf) -> Result<bool> {
+    let metadata = metadata(path)?;
+    let file_uid = metadata.uid();
+    let file_gid = metadata.gid();
+    let user_uid = unsafe { getuid() };
+    let user_gid = unsafe { getgid() };
+    Ok(
+        (user_uid == file_uid && metadata.mode() & 0o400 != 0) ||
+            (user_gid == file_gid && metadata.mode() & 0o040 != 0)
+    )
+}
+
+unsafe fn wrap_string(string: *mut i8) -> String {
+    let size = strlen(string);
+    let string = string as *mut u8;
+    String::from_raw_parts(string, size, size)
 }
 
 fn iterate_through_args(args: &Vec<String>) {

@@ -6,10 +6,10 @@
 /// assert_eq!(splitted, vec!["echo", "first argument", "second argument"]);
 /// ```
 pub fn split_arguments(line: &str) -> Vec<&str> {
-    line.split('"').step_by(2).collect()
+    line.split_whitespace().collect()
 }
 
-
+#[cfg(test)]
 mod tests {
     use super::*;
 

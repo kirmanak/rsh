@@ -4,5 +4,4 @@ version = "0.1.0"
 authors = ["Kirill Kamakin <k.kamakin@protonmail.ch>"]
 
 [dependencies]
-regex = "1"
-lazy_static = "1.2.0"
+libc = "0.2"
