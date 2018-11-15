@@ -1,10 +1,14 @@
-extern crate libc;
+#[macro_use]
+extern crate lazy_static;
+extern crate regex;
 
 use std::env::args;
 use std::env::var;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
 use std::process::Command;
+
+use regex::Regex;
 
 fn main() {
     let args: Vec<String> = args().skip(1) // skipping the name of the shell
@@ -100,6 +104,14 @@ fn interpret(reader: &mut BufRead) {
 }
 
 fn parse(line: &str) {
+    lazy_static! {
+        static ref split_regex: Regex = Regex::new("\\s|'.+?'|\".+?\"").unwrap();
+
+    }
+    let slices: Vec<&str> = split_regex.split(line).collect();
+    for slice in slices.iter().filter(|s| !s.is_empty()) {
+        println!("{}", &slice)
+    }
 }
 
 fn fork_child() {
