@@ -8,7 +8,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use libc::{getgid, getpwuid, getuid, strlen};
+use libc::{getgid, gethostname, getpwuid, getuid, strlen};
 
 use splitter::split_arguments;
 
@@ -77,10 +77,14 @@ fn is_login() -> bool {
 }
 
 fn get_prompt() -> String {
-    let hostname = get_output("hostname")
-        .unwrap_or("hostname".to_string())
-        .trim()
-        .to_string();
+    let buf_capacity = 256;
+    let mut buf: Vec<u8> = Vec::with_capacity(buf_capacity);
+    unsafe {
+        let buffer = buf.as_mut_ptr() as *mut i8;
+        gethostname(buffer, buf_capacity);
+        buf.set_len(strlen(buffer));
+    }
+    let hostname = String::from_utf8(buf).unwrap();
     let uid = unsafe { getuid() };
     if uid == 0 {
         hostname.add("#")
