@@ -3,6 +3,7 @@ extern crate libc;
 use std::env::{args, var};
 use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
+use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -76,10 +77,16 @@ fn is_login() -> bool {
 }
 
 fn get_prompt() -> String {
-    get_output("hostname")
+    let mut hostname = get_output("hostname")
         .unwrap_or("hostname".to_string())
         .trim()
-        .to_string()
+        .to_string();
+    let uid = unsafe { getuid() };
+    if uid == 0 {
+        hostname.add("#")
+    } else {
+        hostname.add("%")
+    }
 }
 
 fn get_output(program: &str) -> Result<String> {
@@ -136,7 +143,7 @@ fn println_error(text: &str) {
 }
 
 fn print_prompt(prompt: &str) {
-    print!("{}% ", prompt);
+    print!("{} ", prompt);
     stdout().flush().unwrap();
 }
 
