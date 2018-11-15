@@ -77,7 +77,7 @@ fn is_login() -> bool {
 }
 
 fn get_prompt() -> String {
-    let mut hostname = get_output("hostname")
+    let hostname = get_output("hostname")
         .unwrap_or("hostname".to_string())
         .trim()
         .to_string();
