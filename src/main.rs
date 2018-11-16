@@ -53,12 +53,14 @@ unsafe fn wrap_string(string: *mut i8) -> String {
 
 fn is_login() -> bool {
     let mut args = args();
-    if args.next().unwrap().starts_with('-') {
-        args.len() == 0 //we were invoked as -<something> and we had no arguments
-    } else if args.len() == 1 {
-        args.next().unwrap().eq(&"-l".to_string()) // or we were invoked only with the -l flag
-    } else {
-        false
+    match args.len() {
+        // first argument MUST be present
+        0 => panic!("Something went REALLY wrong"),
+        // we had no arguments and started as -<something>
+        1 => args.next().unwrap().starts_with('-'),
+        // we had only one argument - "-l"
+        2 => args.skip(1).next().unwrap().eq(&"-l".to_string()),
+        _ => false
     }
 }
 
