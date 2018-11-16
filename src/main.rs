@@ -1,4 +1,6 @@
-extern crate libc;
+extern crate dirs;
+extern crate hostname;
+extern crate users;
 
 use std::env::{args, var};
 use std::fs::{File, metadata};
@@ -8,16 +10,12 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use libc::{getgid, gethostname, getpwuid, getuid, passwd, strlen};
-
 use splitter::split_arguments;
 
 mod splitter;
 
 fn main() {
-    let passwd_entry: *mut passwd = unsafe { getpwuid(getuid()) };
-    let home = unsafe { wrap_string((*passwd_entry).pw_dir) };
-    let home = PathBuf::from(home);
+    let home = dirs::home_dir().unwrap();
     let args: Vec<String> = args().skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering unsupported options
         .collect();
@@ -37,19 +35,9 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     let metadata = metadata(path)?;
     let file_uid = metadata.uid();
     let file_gid = metadata.gid();
-    let user_uid = unsafe { getuid() };
-    let user_gid = unsafe { getgid() };
-    Ok(
-        (user_uid == file_uid && metadata.mode() & 0o400 != 0) ||
-            (user_gid == file_gid && metadata.mode() & 0o040 != 0)
-    )
-}
-
-/// Wraps string from libc to Rust's String
-unsafe fn wrap_string(string: *mut i8) -> String {
-    let size = strlen(string);
-    let string = string as *mut u8;
-    String::from_raw_parts(string, size, size)
+    let user_uid = users::get_current_uid();
+    let user_gid = users::get_current_gid();
+    Ok((user_uid == file_uid && metadata.mode() & 0o400 != 0) || (user_gid == file_gid && metadata.mode() & 0o040 != 0))
 }
 
 /// Checks whether we're the login shell or not
@@ -68,15 +56,8 @@ fn is_login() -> bool {
 
 /// Gets text for prompt from the system
 fn get_prompt() -> String {
-    let buf_capacity = 256;
-    let mut buf: Vec<u8> = Vec::with_capacity(buf_capacity);
-    unsafe {
-        let buffer = buf.as_mut_ptr() as *mut i8;
-        gethostname(buffer, buf_capacity);
-        buf.set_len(strlen(buffer));
-    }
-    let hostname = String::from_utf8(buf).unwrap();
-    let uid = unsafe { getuid() };
+    let hostname = hostname::get_hostname().unwrap();
+    let uid = users::get_current_uid();
     if uid == 0 {
         hostname.add("#")
     } else {
