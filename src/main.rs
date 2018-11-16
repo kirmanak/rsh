@@ -145,10 +145,11 @@ impl Shell {
             Some(home) => {
                 let mut rc_file = home.clone();
                 rc_file.push(rc_name);
-                if check_file(&rc_file)? {
-                    self.interpret(&rc_file)?;
-                }
-                Ok(())
+                return if check_file(&rc_file)? {
+                    self.interpret(&rc_file)
+                } else {
+                    Ok(())
+                };
             }
         }
 
