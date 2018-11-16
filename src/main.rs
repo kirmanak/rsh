@@ -2,6 +2,7 @@ extern crate dirs;
 extern crate hostname;
 extern crate users;
 
+use std::collections::HashMap;
 use std::env::{args, var};
 use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
@@ -15,13 +16,16 @@ use splitter::split_arguments;
 mod splitter;
 
 fn main() {
-    let home = dirs::home_dir().unwrap();
-    if is_login() {
-        interpret(&(PathBuf::from("/etc/.login")));
-        interpret_rc(&home, ".cshrc");
-        interpret_rc(&home, ".login");
-    } else {
-        interpret_rc(&home, ".cshrc");
+    let shell = Shell::new();
+    if let Some(home) = shell.get_variable("HOME") {
+        let home = PathBuf::from(home);
+        if shell.is_login {
+            shell.interpret(&(PathBuf::from("/etc/.login")));
+            shell.interpret_rc(".cshrc");
+            shell.interpret_rc(".login");
+        } else {
+            shell.interpret_rc(".cshrc");
+        }
     }
     let args: Vec<PathBuf> = args().skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering options
@@ -29,23 +33,14 @@ fn main() {
         .collect();
     if args.len() > 0 {
         for argument in args {
-            interpret(&argument).unwrap();
+            shell.interpret(&argument).unwrap();
         }
     } else {
         let stdin = stdin();
-        interact(&mut stdin.lock());
+        shell.interact(&mut stdin.lock());
     }
 }
 
-/// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
-fn interpret_rc(home: &PathBuf, rc_name: &str) -> Result<()> {
-    let mut rc_file = home.clone();
-    rc_file.push(rc_name);
-    if check_file(&rc_file)? {
-        interpret(&rc_file)?;
-    }
-    Ok(())
-}
 
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
@@ -60,88 +55,109 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
 }
 
-/// Checks whether we're the login shell or not
-fn is_login() -> bool {
-    let mut args = args();
-    match args.len() {
-        0 => panic!("Something went REALLY wrong"), // first argument MUST be present
-        1 => {
-            args.next()
-                .unwrap()
-                .starts_with('-') // we had no arguments and started as -<something>
-        },
-        2 => {
-            args.skip(1)
-                .next()
-                .unwrap()
-                .eq(&"-l".to_string()) // we have only one argument - "-l"
-        },
-        _ => false
-    }
+pub struct Shell {
+    variables: HashMap<String, String>,
+    pub is_login: bool,
+    pub home: PathBuf,
+    pub path: Vec<PathBuf>,
+    pub argv: std::env::Args,
+    pub user: users::uid_t,
+    pub cwd: PathBuf,
+    pub prompt: String,
+    pub status: Option<std::process::ExitStatus>,
 }
 
-/// Gets text for prompt from the system
-fn get_prompt() -> String {
-    let hostname = hostname::get_hostname().unwrap_or("hostname".to_string());
-    let uid = users::get_current_uid();
-    if uid == 0 {
-        hostname.add("#")
-    } else {
-        hostname.add("%")
-    }
-}
-
-fn get_output(program: &str) -> Result<String> {
-    let path = var("PATH").unwrap_or("/usr/bin".to_string());
-    let output = Command::new(program).env("PATH", path).output()?;
-    let stdout = output.stdout;
-    let parse_result = String::from_utf8(stdout);
-    match parse_result {
-        Ok(stdout) => Ok(stdout),
-        Err(error) => {
-            Err(Error::new(ErrorKind::InvalidData, error))
+impl Shell {
+    pub fn new() -> Shell {
+        let path = std::env::var("PATH").unwrap_or(String::from("/usr/bin"));
+        let path = path.split(':').map(PathBuf::from).collect();
+        let user = users::get_current_uid();
+        Shell {
+            variables: HashMap::new(),
+            is_login: Self::is_login(),
+            home: dirs::home_dir().unwrap(),
+            path,
+            cwd: std::env::current_dir().unwrap(),
+            prompt: Self::get_prompt(user),
+            argv: std::env::args(),
+            user,
+            status: None,
         }
     }
-}
 
-fn interact(reader: &mut BufRead) {
-    let prompt = get_prompt();
-    print_prompt(&prompt);
-    for read_result in reader.lines() {
-        match read_result {
-            Ok(line) => execute(&line),
-            Err(error) => eprintln!("{}", &error),
-        }
-        print_prompt(&prompt);
+    pub fn get_variable(&self, name: &str) -> Option<&String> {
+        self.variables.get(name)
     }
-}
 
-/// Interprets the provided file.
-fn interpret(path: &PathBuf) -> Result<()> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    for read_result in reader.lines() {
-        match read_result {
-            Ok(line) => execute(&line),
-            Err(reason) => return Err(reason),
+    pub fn interact(&self, reader: &mut BufRead) {
+        self.print_prompt();
+        for read_result in reader.lines() {
+            match read_result {
+                Ok(line) => self.execute(&line),
+                Err(error) => eprintln!("{}", &error),
+            }
+            self.print_prompt();
         }
     }
-    Ok(())
+
+    /// Parses the command and executes it
+    fn execute(&self, line: &str) {
+        let arguments = split_arguments(line);
+    }
+
+    fn print_prompt(&self) {
+        print!("{} ", self.prompt);
+        stdout().flush().unwrap();
+    }
+
+    /// Checks whether we're the login shell or not
+    fn is_login() -> bool {
+        let mut args = std::env::args();
+        match args.len() {
+            0 => panic!("Something went REALLY wrong"), // first argument MUST be present
+            1 => {
+                args.next()
+                    .unwrap()
+                    .starts_with('-') // we had no arguments and started as -<something>
+            },
+            2 => {
+                args.skip(1)
+                    .next()
+                    .unwrap()
+                    .eq(&"-l".to_string()) // we have only one argument - "-l"
+            },
+            _ => false
+        }
+    }
+
+    /// Gets text for prompt from the system
+    fn get_prompt(user: users::uid_t) -> String {
+        let hostname = hostname::get_hostname().unwrap_or("hostname".to_string());
+        let suffix = if user == 0 { "#" } else { "%" };
+        hostname.add(suffix)
+    }
+
+    /// Interprets the provided file.
+    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        for read_result in reader.lines() {
+            match read_result {
+                Ok(line) => self.execute(&line),
+                Err(reason) => return Err(reason),
+            }
+        }
+        Ok(())
+    }
+
+
+    /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
+    pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
+        let mut rc_file = self.home.clone();
+        rc_file.push(rc_name);
+        if check_file(&rc_file)? {
+            self.interpret(&rc_file)?;
+        }
+        Ok(())
+    }
 }
-
-/// Parses the command and executes it
-fn execute(line: &str) {
-    let arguments = split_arguments(line);
-}
-
-fn fork_child() {
-    let output = Command::new("ls").arg("-l").arg("-a").output().expect("ls failed to start");
-    println!("{}", &String::from_utf8(output.stdout).unwrap());
-
-}
-
-fn print_prompt(prompt: &str) {
-    print!("{} ", prompt);
-    stdout().flush().unwrap();
-}
-
