@@ -111,8 +111,8 @@ impl Shell {
     fn is_login(args: &Vec<String>) -> bool {
         match args.len() {
             0 => panic!("Something went REALLY wrong"), // first argument MUST be present
-            1 => args[1].starts_with('-'), // we had no arguments and started as -<something>,
-            2 => args[2].eq(&"-l".to_string()), // we had only one argument - "-l",
+            1 => args[0].starts_with('-'), // we had no arguments and started as -<something>,
+            2 => args[1].eq(&"-l".to_string()), // we had only one argument - "-l",
             _ => false
         }
     }
@@ -153,5 +153,45 @@ impl Shell {
             }
         }
 
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_login_regular() {
+        let args: Vec<String> = vec!["rsh", "hello.rsh"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(Shell::is_login(&args), false);
+    }
+
+    #[test]
+    fn is_login_minus_and_arg() {
+        let args = vec!["-rsh", "hello.rsh"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(Shell::is_login(&args), false);
+    }
+
+    #[test]
+    fn is_login_minus_no_args() {
+        let args = vec!["-rsh"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(Shell::is_login(&args), true);
+    }
+
+    #[test]
+    fn is_login_argument_login() {
+        let args = vec!["rsh", "-l"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(Shell::is_login(&args), true);
+    }
+
+    #[test]
+    fn is_login_argument_login_and_another() {
+        let args = vec!["rsh", "-l", "hello.rsh"]
+            .iter().map(|s| s.to_string()).collect();
+        assert_eq!(Shell::is_login(&args), false);
     }
 }
