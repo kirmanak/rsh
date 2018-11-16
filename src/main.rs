@@ -8,21 +8,23 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-use libc::{getgid, gethostname, getpwuid, getuid, strlen};
+use libc::{getgid, gethostname, getpwuid, getuid, passwd, strlen};
 
 use splitter::split_arguments;
 
 mod splitter;
 
 fn main() {
-    let passwd_entry = unsafe { getpwuid(getuid()) };
+    let passwd_entry: *mut passwd = unsafe { getpwuid(getuid()) };
     let home = unsafe { wrap_string((*passwd_entry).pw_dir) };
     let home = PathBuf::from(home);
     let args: Vec<String> = args().skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering unsupported options
         .collect();
     if args.len() > 0 {
-        iterate_through_args(&args);
+        for argument in args {
+            interpret(&argument);
+        }
     } else {
         let stdin = stdin();
         interact(&mut stdin.lock());
@@ -47,22 +49,6 @@ unsafe fn wrap_string(string: *mut i8) -> String {
     let size = strlen(string);
     let string = string as *mut u8;
     String::from_raw_parts(string, size, size)
-}
-
-fn iterate_through_args(args: &Vec<String>) {
-    for argument in args {
-        let open_result = File::open(&argument);
-        match open_result {
-            Ok(file) => {
-                interpret(&mut BufReader::new(file));
-            }
-            Err(error) => {
-                let text = format!("{}: {}", &argument, &error);
-                println_error(text.as_str());
-                break;
-            }
-        }
-    }
 }
 
 fn is_login() -> bool {
@@ -120,14 +106,16 @@ fn interact(reader: &mut BufRead) {
     }
 }
 
-fn interpret(reader: &mut BufRead) {
+fn interpret(file_name: &str) {
+    let file = match File::open(file_name) {
+        Ok(file) => file,
+        Err(reason) => panic!("{}: {}", file_name, &reason),
+    };
+    let reader = BufReader::new(file);
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => execute(&line),
-            Err(error) => {
-                println_error(error.to_string().as_str());
-                break;
-            }
+            Err(reason) => panic!("{}: {}", file_name, &reason),
         }
     }
 }
