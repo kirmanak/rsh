@@ -37,7 +37,9 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     let file_gid = metadata.gid();
     let user_uid = users::get_current_uid();
     let user_gid = users::get_current_gid();
-    Ok((user_uid == file_uid && metadata.mode() & 0o400 != 0) || (user_gid == file_gid && metadata.mode() & 0o040 != 0))
+    let can_user_read = metadata.mode() & 0o400 != 0;
+    let can_group_read = metadata.mode() & 0o040 != 0;
+    Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
 }
 
 /// Checks whether we're the login shell or not
