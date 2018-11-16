@@ -45,12 +45,14 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     )
 }
 
+/// Wraps string from libc to Rust's String
 unsafe fn wrap_string(string: *mut i8) -> String {
     let size = strlen(string);
     let string = string as *mut u8;
     String::from_raw_parts(string, size, size)
 }
 
+/// Checks whether we're the login shell or not
 fn is_login() -> bool {
     let mut args = args();
     match args.len() {
@@ -64,6 +66,7 @@ fn is_login() -> bool {
     }
 }
 
+/// Gets text for prompt from the system
 fn get_prompt() -> String {
     let buf_capacity = 256;
     let mut buf: Vec<u8> = Vec::with_capacity(buf_capacity);
