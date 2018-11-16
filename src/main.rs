@@ -3,13 +3,12 @@ extern crate hostname;
 extern crate users;
 
 use std::collections::HashMap;
-use std::env::{args, var};
+use std::env::args;
 use std::fs::{File, metadata};
-use std::io::{BufRead, BufReader, Error, ErrorKind, Result, stdin, stdout, Write};
+use std::io::{BufRead, BufReader, Result, stdin, stdout, Write};
 use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
-use std::process::Command;
 
 use splitter::split_arguments;
 
@@ -17,15 +16,12 @@ mod splitter;
 
 fn main() {
     let shell = Shell::new();
-    if let Some(home) = shell.get_variable("HOME") {
-        let home = PathBuf::from(home);
-        if shell.is_login {
-            shell.interpret(&(PathBuf::from("/etc/.login")));
-            shell.interpret_rc(".cshrc");
-            shell.interpret_rc(".login");
-        } else {
-            shell.interpret_rc(".cshrc");
-        }
+    if shell.is_login {
+        shell.interpret(&(PathBuf::from("/etc/.login")));
+        shell.interpret_rc(".cshrc");
+        shell.interpret_rc(".login");
+    } else {
+        shell.interpret_rc(".cshrc");
     }
     let args: Vec<PathBuf> = args().skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering options
