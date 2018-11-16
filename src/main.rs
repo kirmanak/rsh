@@ -82,7 +82,7 @@ fn is_login() -> bool {
 
 /// Gets text for prompt from the system
 fn get_prompt() -> String {
-    let hostname = hostname::get_hostname().unwrap();
+    let hostname = hostname::get_hostname().unwrap_or("hostname".to_string());
     let uid = users::get_current_uid();
     if uid == 0 {
         hostname.add("#")
