@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::env::args;
 use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Result, stdin, stdout, Write};
+use std::io::Error;
+use std::io::ErrorKind;
 use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
@@ -29,7 +31,9 @@ fn main() {
         .collect();
     if args.len() > 0 {
         for argument in args {
-            shell.interpret(&argument).unwrap();
+            if let Err(reason) = shell.interpret(&argument) {
+                panic!("{}: {}", argument.to_str().unwrap(), reason);
+            }
         }
     } else {
         let stdin = stdin();
@@ -52,13 +56,13 @@ fn check_file(path: &PathBuf) -> Result<bool> {
 }
 
 pub struct Shell {
-    variables: HashMap<String, String>,
+    pub variables: HashMap<String, String>,
     pub is_login: bool,
-    pub home: PathBuf,
+    pub home: Option<PathBuf>,
     pub path: Vec<PathBuf>,
-    pub argv: std::env::Args,
+    pub argv: Vec<String>,
     pub user: users::uid_t,
-    pub cwd: PathBuf,
+    pub cwd: Result<PathBuf>,
     pub prompt: String,
     pub status: Option<std::process::ExitStatus>,
 }
@@ -68,21 +72,18 @@ impl Shell {
         let path = std::env::var("PATH").unwrap_or(String::from("/usr/bin"));
         let path = path.split(':').map(PathBuf::from).collect();
         let user = users::get_current_uid();
+        let argv = std::env::args().collect();
         Shell {
             variables: HashMap::new(),
-            is_login: Self::is_login(),
-            home: dirs::home_dir().unwrap(),
+            is_login: Self::is_login(&argv),
+            home: dirs::home_dir(),
             path,
-            cwd: std::env::current_dir().unwrap(),
+            cwd: std::env::current_dir(),
             prompt: Self::get_prompt(user),
-            argv: std::env::args(),
+            argv,
             user,
             status: None,
         }
-    }
-
-    pub fn get_variable(&self, name: &str) -> Option<&String> {
-        self.variables.get(name)
     }
 
     pub fn interact(&self, reader: &mut BufRead) {
@@ -103,25 +104,15 @@ impl Shell {
 
     fn print_prompt(&self) {
         print!("{} ", self.prompt);
-        stdout().flush().unwrap();
+        stdout().flush();
     }
 
     /// Checks whether we're the login shell or not
-    fn is_login() -> bool {
-        let mut args = std::env::args();
+    fn is_login(args: &Vec<String>) -> bool {
         match args.len() {
             0 => panic!("Something went REALLY wrong"), // first argument MUST be present
-            1 => {
-                args.next()
-                    .unwrap()
-                    .starts_with('-') // we had no arguments and started as -<something>
-            },
-            2 => {
-                args.skip(1)
-                    .next()
-                    .unwrap()
-                    .eq(&"-l".to_string()) // we have only one argument - "-l"
-            },
+            1 => args[1].starts_with('-'), // we had no arguments and started as -<something>,
+            2 => args[2].eq(&"-l".to_string()), // we had only one argument - "-l",
             _ => false
         }
     }
@@ -149,11 +140,17 @@ impl Shell {
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
     pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
-        let mut rc_file = self.home.clone();
-        rc_file.push(rc_name);
-        if check_file(&rc_file)? {
-            self.interpret(&rc_file)?;
+        match &self.home {
+            None => return Err(Error::new(ErrorKind::NotFound, "home dir is not found")),
+            Some(home) => {
+                let mut rc_file = home.clone();
+                rc_file.push(rc_name);
+                if check_file(&rc_file)? {
+                    self.interpret(&rc_file)?;
+                }
+                Ok(())
+            }
         }
-        Ok(())
+
     }
 }
