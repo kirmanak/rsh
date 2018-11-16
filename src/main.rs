@@ -84,25 +84,19 @@ fn interact(reader: &mut BufRead) {
     for read_result in reader.lines() {
         match read_result {
             Ok(line) => execute(&line),
-            Err(error) => {
-                println_error(error.to_string().as_str());
-            }
+            Err(error) => eprintln!("{}", &error),
         }
         print_prompt(&prompt);
     }
 }
 
+/// Interprets the provided file. Panics in case of any I/O error.
 fn interpret(file_name: &str) {
-    let file = match File::open(file_name) {
-        Ok(file) => file,
-        Err(reason) => panic!("{}: {}", file_name, &reason),
-    };
+    let file = File::open(file_name).unwrap();
     let reader = BufReader::new(file);
     for read_result in reader.lines() {
-        match read_result {
-            Ok(line) => execute(&line),
-            Err(reason) => panic!("{}: {}", file_name, &reason),
-        }
+        let line = read_result.unwrap();
+        execute(&line);
     }
 }
 
@@ -114,10 +108,6 @@ fn fork_child() {
     let output = Command::new("ls").arg("-l").arg("-a").output().expect("ls failed to start");
     println!("{}", &String::from_utf8(output.stdout).unwrap());
 
-}
-
-fn println_error(text: &str) {
-    eprintln!("{}", text);
 }
 
 fn print_prompt(prompt: &str) {
