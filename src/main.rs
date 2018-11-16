@@ -116,9 +116,9 @@ fn interact(reader: &mut BufRead) {
     }
 }
 
-/// Interprets the provided file. Panics in case of any I/O error.
-fn interpret(file_name: &PathBuf) -> Result<()> {
-    let file = File::open(file_name)?;
+/// Interprets the provided file.
+fn interpret(path: &PathBuf) -> Result<()> {
+    let file = File::open(path)?;
     let reader = BufReader::new(file);
     for read_result in reader.lines() {
         match read_result {
@@ -129,6 +129,7 @@ fn interpret(file_name: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Parses the command and executes it
 fn execute(line: &str) {
     let arguments = split_arguments(line);
 }
