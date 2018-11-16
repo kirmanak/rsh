@@ -16,17 +16,35 @@ mod splitter;
 
 fn main() {
     let home = dirs::home_dir().unwrap();
-    let args: Vec<String> = args().skip(1) // skipping the name of the shell
-        .filter(|arg| !arg.starts_with('-')) // filtering unsupported options
+    if is_login() {
+        interpret(&(PathBuf::from("/etc/.login")));
+        interpret_rc(&home, ".cshrc");
+        interpret_rc(&home, ".login");
+    } else {
+        interpret_rc(&home, ".cshrc");
+    }
+    let args: Vec<PathBuf> = args().skip(1) // skipping the name of the shell
+        .filter(|arg| !arg.starts_with('-')) // filtering options
+        .map(PathBuf::from)
         .collect();
     if args.len() > 0 {
         for argument in args {
-            interpret(&argument);
+            interpret(&argument).unwrap();
         }
     } else {
         let stdin = stdin();
         interact(&mut stdin.lock());
     }
+}
+
+/// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
+fn interpret_rc(home: &PathBuf, rc_name: &str) -> Result<()> {
+    let mut rc_file = home.clone();
+    rc_file.push(rc_name);
+    if check_file(&rc_file)? {
+        interpret(&rc_file)?;
+    }
+    Ok(())
 }
 
 /// Checks whether the file is readable and either is owned by the current user
@@ -46,12 +64,18 @@ fn check_file(path: &PathBuf) -> Result<bool> {
 fn is_login() -> bool {
     let mut args = args();
     match args.len() {
-        // first argument MUST be present
-        0 => panic!("Something went REALLY wrong"),
-        // we had no arguments and started as -<something>
-        1 => args.next().unwrap().starts_with('-'),
-        // we had only one argument - "-l"
-        2 => args.skip(1).next().unwrap().eq(&"-l".to_string()),
+        0 => panic!("Something went REALLY wrong"), // first argument MUST be present
+        1 => {
+            args.next()
+                .unwrap()
+                .starts_with('-') // we had no arguments and started as -<something>
+        },
+        2 => {
+            args.skip(1)
+                .next()
+                .unwrap()
+                .eq(&"-l".to_string()) // we have only one argument - "-l"
+        },
         _ => false
     }
 }
@@ -93,13 +117,16 @@ fn interact(reader: &mut BufRead) {
 }
 
 /// Interprets the provided file. Panics in case of any I/O error.
-fn interpret(file_name: &str) {
-    let file = File::open(file_name).unwrap();
+fn interpret(file_name: &PathBuf) -> Result<()> {
+    let file = File::open(file_name)?;
     let reader = BufReader::new(file);
     for read_result in reader.lines() {
-        let line = read_result.unwrap();
-        execute(&line);
+        match read_result {
+            Ok(line) => execute(&line),
+            Err(reason) => return Err(reason),
+        }
     }
+    Ok(())
 }
 
 fn execute(line: &str) {
