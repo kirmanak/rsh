@@ -45,8 +45,9 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     let file_gid: GroupId = syscalls::get_file_gid(&path)?;
     let user_uid: UserId = syscalls::get_uid();
     let user_gid: GroupId = syscalls::get_gid();
-    let can_user_read = metadata.mode() & 0o400 != 0;
-    let can_group_read = metadata.mode() & 0o040 != 0;
+    let mode = syscalls::get_file_mode(&path)?;
+    let can_user_read = mode & 0o400 != 0;
+    let can_group_read = mode & 0o040 != 0;
     Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
 }
 

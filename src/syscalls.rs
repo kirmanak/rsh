@@ -9,11 +9,12 @@ use std::path::PathBuf;
 pub fn get_hostname() -> Option<String> {
     let capacity = 256; // according to man, any host name is limited to 256 characters
     let mut buf = Vec::with_capacity(capacity);
-    let status = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut i8, capacity) };
+    let raw_string = unsafe { CString::from_vec_unchecked(buf) };
+    let raw_string = raw_string.into_raw();
+    let status = unsafe { libc::gethostname(raw_string, capacity) };
+    let raw_string = unsafe { CString::from_raw(raw_string) };
     if status == 0 {
-        let len = unsafe { libc::strlen(buf.as_ptr() as *const i8) };
-        unsafe { buf.set_len(len); }
-        String::from_utf8(buf).ok()
+        raw_string.into_string().ok()
     } else {
         None
     }
@@ -65,20 +66,29 @@ pub fn open_file(path: &PathBuf, flags: i32) -> Result<FileDescriptorId> {
 
 pub fn get_file_uid(path: &PathBuf) -> Result<UserId> {
     let path = path_to_str(path)?;
-    let path = CString::new(path)?;
     let stat: libc::stat = unsafe { stat_file(&path)? };
     Ok(stat.st_uid)
 }
 
 pub fn get_file_gid(path: &PathBuf) -> Result<GroupId> {
     let path = path_to_str(path)?;
-    let path = CString::new(path)?;
     let stat: libc::stat = unsafe { stat_file(&path)? };
     Ok(stat.st_gid)
 }
 
-fn path_to_str(buf: &PathBuf) -> Result<&str> {
-    buf.to_str().ok_or(Error::new(ErrorKind::InvalidData, "Invalid file path"))
+pub type FileMode = u32;
+
+pub fn get_file_mode(path: &PathBuf) -> Result<FileMode> {
+    let path = path_to_str(path)?;
+    let stat: libc::stat = unsafe { stat_file(&path)? };
+    Ok(stat.st_mode)
+}
+
+fn path_to_str(buf: &PathBuf) -> Result<CString> {
+    let buf = buf.to_str()
+        .ok_or(Error::new(ErrorKind::InvalidData, "Invalid file path"))?;
+    let string = CString::new(buf)?;
+    Ok(string)
 }
 
 unsafe fn stat_file(path: &CString) -> Result<libc::stat> {
