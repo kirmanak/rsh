@@ -4,7 +4,6 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Result;
 use std::ops::Add;
-use std::path::PathBuf;
 
 use splitter::split_arguments;
 use syscalls::{GroupId, UserId};
@@ -15,29 +14,27 @@ mod syscalls;
 fn main() {
     let shell = Shell::new();
     if shell.is_login {
-        shell.interpret(&(PathBuf::from("/etc/.login")));
+        shell.interpret("/etc/.login");
         shell.interpret_rc(".cshrc");
         shell.interpret_rc(".login");
     } else {
         shell.interpret_rc(".cshrc");
     }
-    let args: Vec<PathBuf> = args().skip(1) // skipping the name of the shell
+    args() // iterating over argv
+        .skip(1) // skipping the name of the shell
         .filter(|arg| !arg.starts_with('-')) // filtering options
-        .map(PathBuf::from)
-        .collect();
-    if args.len() > 0 {
-        for argument in args {
-            if let Err(reason) = shell.interpret(&argument) {
-                panic!("{}: {}", argument.to_str().unwrap(), reason);
+        .for_each(|path| {
+            if let Err(reason) = shell.interpret(&path) {
+                let error = format!("{:?}: {}", &path, &reason);
+                syscalls::exit_error(1, &error);
             }
-        }
-    }
+        });
 }
 
 
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
-fn check_file(path: &PathBuf) -> Result<bool> {
+fn check_file(path: &str) -> Result<bool> {
     let file_uid: UserId = syscalls::get_file_uid(&path)?;
     let file_gid: GroupId = syscalls::get_file_gid(&path)?;
     let user_uid: UserId = syscalls::get_uid();
@@ -51,11 +48,11 @@ fn check_file(path: &PathBuf) -> Result<bool> {
 pub struct Shell {
     pub variables: HashMap<String, String>,
     pub is_login: bool,
-    pub home: Option<PathBuf>,
-    pub path: Vec<PathBuf>,
+    pub home: Option<String>,
+    pub path: Vec<String>,
     pub argv: Vec<String>,
     pub user: syscalls::UserId,
-    pub cwd: Result<PathBuf>,
+    pub cwd: Result<String>,
     pub prompt: String,
     pub status: Option<std::process::ExitStatus>,
 }
@@ -63,15 +60,17 @@ pub struct Shell {
 impl Shell {
     pub fn new() -> Shell {
         let path = std::env::var("PATH").unwrap_or(String::from("/usr/bin"));
-        let path = path.split(':').map(PathBuf::from).collect();
+        let path = path.split(':').map(|s| s.to_string()).collect();
         let user = syscalls::get_uid();
-        let argv = std::env::args().collect();
+        let home = syscalls::get_home_dir(user);
+        let mut argv = Vec::with_capacity(args().len());
+        args().for_each(|arg| argv.push(arg.clone()));
         Shell {
             variables: HashMap::new(),
             is_login: Self::is_login(&argv),
-            home: syscalls::get_home_dir(user),
+            home,
             path,
-            cwd: std::env::current_dir(),
+            cwd: syscalls::get_current_dir(),
             prompt: Self::get_prompt(user),
             argv,
             user,
@@ -79,8 +78,12 @@ impl Shell {
         }
     }
 
-    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
+    pub fn interpret(&self, path: &str) -> Result<()> {
         let fdi = syscalls::open_file(path, libc::O_RDONLY)?;
+        let content = syscalls::read_file(fdi)?;
+        for line in content.lines() {
+            syscalls::write_to_file(1, line)?;
+        }
         Ok(())
     }
 
@@ -111,8 +114,10 @@ impl Shell {
         match &self.home {
             None => return Err(Error::new(ErrorKind::NotFound, "home dir is not found")),
             Some(home) => {
-                let mut rc_file = home.clone();
+                let mut rc_file = std::path::PathBuf::from(home);
                 rc_file.push(rc_name);
+                let rc_file = rc_file.to_str()
+                    .ok_or(Error::new(ErrorKind::InvalidData, "Path is not valid UTF-8"))?;
                 return if check_file(&rc_file)? {
                     self.interpret(&rc_file)
                 } else {
