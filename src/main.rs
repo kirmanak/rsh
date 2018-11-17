@@ -120,20 +120,6 @@ impl Shell {
         hostname.add(suffix)
     }
 
-    /// Interprets the provided file.
-    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        for read_result in reader.lines() {
-            match read_result {
-                Ok(line) => self.execute(&line),
-                Err(reason) => return Err(reason),
-            }
-        }
-        Ok(())
-    }
-
-
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
     pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
         match &self.home {
