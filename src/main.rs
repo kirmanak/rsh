@@ -9,7 +9,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 
 use splitter::split_arguments;
-use syscalls::Uid;
+use syscalls::UserId;
 
 mod splitter;
 mod syscalls;
@@ -59,7 +59,7 @@ pub struct Shell {
     pub home: Option<PathBuf>,
     pub path: Vec<PathBuf>,
     pub argv: Vec<String>,
-    pub user: syscalls::Uid,
+    pub user: syscalls::UserId,
     pub cwd: Result<PathBuf>,
     pub prompt: String,
     pub status: Option<std::process::ExitStatus>,
@@ -116,7 +116,7 @@ impl Shell {
     }
 
     /// Gets text for prompt from the system
-    fn get_prompt(user: Uid) -> String {
+    fn get_prompt(user: UserId) -> String {
         let hostname = syscalls::get_hostname().unwrap_or("hostname".to_string());
         let suffix = if user == 0 { "#" } else { "%" };
         hostname.add(suffix)
