@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::env::args;
-use std::io::{BufRead, BufReader, Result, stdin, stdout, Write};
 use std::io::Error;
 use std::io::ErrorKind;
+use std::io::Result;
 use std::ops::Add;
 use std::path::PathBuf;
 
@@ -31,9 +31,6 @@ fn main() {
                 panic!("{}: {}", argument.to_str().unwrap(), reason);
             }
         }
-    } else {
-        let stdin = stdin();
-        shell.interact(&mut stdin.lock());
     }
 }
 
@@ -82,25 +79,14 @@ impl Shell {
         }
     }
 
-    pub fn interact(&self, reader: &mut BufRead) {
-        self.print_prompt();
-        for read_result in reader.lines() {
-            match read_result {
-                Ok(line) => self.execute(&line),
-                Err(error) => eprintln!("{}", &error),
-            }
-            self.print_prompt();
-        }
+    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
+        let fdi = syscalls::open_file(path, libc::O_RDONLY)?;
+        Ok(())
     }
 
     /// Parses the command and executes it
     fn execute(&self, line: &str) {
         let arguments = split_arguments(line);
-    }
-
-    fn print_prompt(&self) {
-        print!("{} ", self.prompt);
-        stdout().flush();
     }
 
     /// Checks whether we're the login shell or not
