@@ -12,8 +12,8 @@ pub fn get_hostname() -> Option<String> {
     let raw_string = unsafe { CString::from_vec_unchecked(buf) };
     let raw_string = raw_string.into_raw();
     let status = unsafe { libc::gethostname(raw_string, capacity) };
-    let raw_string = unsafe { CString::from_raw(raw_string) };
     if status == 0 {
+        let raw_string = unsafe { CString::from_raw(raw_string) };
         raw_string.into_string().ok()
     } else {
         None
@@ -39,13 +39,13 @@ pub fn get_home_dir(uid: UserId) -> Option<PathBuf> {
     if pwd_entry.is_null() {
         None
     } else {
-        let dir: *mut libc::c_char = unsafe { (*pwd_entry).pw_dir };
+        let dir = unsafe { (*pwd_entry).pw_dir };
         if dir.is_null() {
             None
         } else {
-            let path = unsafe { wrap_string(dir) };
-            let path = PathBuf::from(path);
-            Some(path)
+            let dir = unsafe { CString::from_raw(dir) };
+            let dir = dir.to_str().ok()?;
+            Some(PathBuf::from(dir))
         }
     }
 }
@@ -84,6 +84,25 @@ pub fn get_file_mode(path: &PathBuf) -> Result<FileMode> {
     Ok(stat.st_mode)
 }
 
+pub fn write_to_file(fdi: FileDescriptorId, text: &str) -> Result<()> {
+    let len = text.len();
+    let text = CString::new(text)?;
+    let status = unsafe { libc::write(fdi, text.into_raw() as *const libc::c_void, len) };
+    if status < 0 {
+        let error = unsafe { get_errno() };
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+pub type ExitCode = i32;
+
+pub fn exit_error(exit_code: ExitCode, text: &str) -> ! {
+    write_to_file(2, text);
+    unsafe { libc::exit(exit_code) }
+}
+
 fn path_to_str(buf: &PathBuf) -> Result<CString> {
     let buf = buf.to_str()
         .ok_or(Error::new(ErrorKind::InvalidData, "Invalid file path"))?;
@@ -101,19 +120,28 @@ unsafe fn stat_file(path: &CString) -> Result<libc::stat> {
     }
 }
 
-unsafe fn wrap_string(ptr: *mut i8) -> String {
-    let len = libc::strlen(ptr);
-    String::from_raw_parts(ptr as *mut u8, len, len)
-}
-
 unsafe fn get_errno() -> Error {
-    let errno = *libc::__errno_location();
-    let error_text = wrap_string(libc::strerror(errno));
+    let errno_ptr = libc::__errno_location();
+    if errno_ptr.is_null() {
+        exit_error(1, "errno location is unknown!");
+    }
+    let errno = *errno_ptr;
+    let text_ptr = libc::strerror(errno);
+    if text_ptr.is_null() {
+        exit_error(1, "errno status is invalid!");
+    }
+    let error_text = CString::from_raw(text_ptr);
+    let transform_result = error_text.to_str();
+    if let Err(reason) = transform_result {
+        let error_text = format!("errno text is not valid UTF-8: {}", reason);
+        exit_error(1, error_text.as_str());
+    }
+    let error_text = transform_result.unwrap();
     let kind = match errno {
         1 => ErrorKind::PermissionDenied,
         2 => ErrorKind::NotFound,
         4 => ErrorKind::Interrupted,
         _ => ErrorKind::Other,
     };
-    Error::new(kind, error_text.as_str())
+    Error::new(kind, error_text)
 }
