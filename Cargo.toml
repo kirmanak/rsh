@@ -4,6 +4,4 @@ version = "0.1.0"
 authors = ["Kirill Kamakin <k.kamakin@protonmail.ch>"]
 
 [dependencies]
-hostname = "0.1"
-dirs = "1"
-users = "0.8"
+libc = "0.2"

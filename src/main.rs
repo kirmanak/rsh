@@ -1,7 +1,3 @@
-extern crate dirs;
-extern crate hostname;
-extern crate users;
-
 use std::collections::HashMap;
 use std::env::args;
 use std::fs::{File, metadata};
@@ -13,8 +9,10 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 
 use splitter::split_arguments;
+use syscalls::Uid;
 
 mod splitter;
+mod syscalls;
 
 fn main() {
     let shell = Shell::new();
@@ -48,8 +46,8 @@ fn check_file(path: &PathBuf) -> Result<bool> {
     let metadata = metadata(path)?;
     let file_uid = metadata.uid();
     let file_gid = metadata.gid();
-    let user_uid = users::get_current_uid();
-    let user_gid = users::get_current_gid();
+    let user_uid = syscalls::get_uid();
+    let user_gid = syscalls::get_gid();
     let can_user_read = metadata.mode() & 0o400 != 0;
     let can_group_read = metadata.mode() & 0o040 != 0;
     Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
@@ -61,7 +59,7 @@ pub struct Shell {
     pub home: Option<PathBuf>,
     pub path: Vec<PathBuf>,
     pub argv: Vec<String>,
-    pub user: users::uid_t,
+    pub user: syscalls::Uid,
     pub cwd: Result<PathBuf>,
     pub prompt: String,
     pub status: Option<std::process::ExitStatus>,
@@ -71,12 +69,12 @@ impl Shell {
     pub fn new() -> Shell {
         let path = std::env::var("PATH").unwrap_or(String::from("/usr/bin"));
         let path = path.split(':').map(PathBuf::from).collect();
-        let user = users::get_current_uid();
+        let user = syscalls::get_uid();
         let argv = std::env::args().collect();
         Shell {
             variables: HashMap::new(),
             is_login: Self::is_login(&argv),
-            home: dirs::home_dir(),
+            home: syscalls::get_home_dir(user),
             path,
             cwd: std::env::current_dir(),
             prompt: Self::get_prompt(user),
@@ -118,8 +116,8 @@ impl Shell {
     }
 
     /// Gets text for prompt from the system
-    fn get_prompt(user: users::uid_t) -> String {
-        let hostname = hostname::get_hostname().unwrap_or("hostname".to_string());
+    fn get_prompt(user: Uid) -> String {
+        let hostname = syscalls::get_hostname().unwrap_or("hostname".to_string());
         let suffix = if user == 0 { "#" } else { "%" };
         hostname.add(suffix)
     }
