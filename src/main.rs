@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 use std::env::args;
-use std::fs::{File, metadata};
 use std::io::{BufRead, BufReader, Result, stdin, stdout, Write};
 use std::io::Error;
 use std::io::ErrorKind;
 use std::ops::Add;
-use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 
 use splitter::split_arguments;
-use syscalls::UserId;
+use syscalls::{GroupId, UserId};
 
 mod splitter;
 mod syscalls;
@@ -43,11 +41,10 @@ fn main() {
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
 fn check_file(path: &PathBuf) -> Result<bool> {
-    let metadata = metadata(path)?;
-    let file_uid = metadata.uid();
-    let file_gid = metadata.gid();
-    let user_uid = syscalls::get_uid();
-    let user_gid = syscalls::get_gid();
+    let file_uid: UserId = syscalls::get_file_uid(&path)?;
+    let file_gid: GroupId = syscalls::get_file_gid(&path)?;
+    let user_uid: UserId = syscalls::get_uid();
+    let user_gid: GroupId = syscalls::get_gid();
     let can_user_read = metadata.mode() & 0o400 != 0;
     let can_group_read = metadata.mode() & 0o040 != 0;
     Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))

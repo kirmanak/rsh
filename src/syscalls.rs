@@ -1,5 +1,6 @@
 extern crate libc;
 
+use std::ffi::CString;
 use std::io::{Error, ErrorKind, Result};
 use std::path::PathBuf;
 
@@ -50,17 +51,43 @@ pub fn get_home_dir(uid: UserId) -> Option<PathBuf> {
 
 pub type FileDescriptorId = i32;
 
-pub fn open_file(path: &str, flags: i32) -> Result<FileDescriptorId> {
+pub fn open_file(path: &PathBuf, flags: i32) -> Result<FileDescriptorId> {
+    let path = path.to_str()
+        .ok_or(Error::new(ErrorKind::InvalidData, "Invalid file path"))?;
     let status = unsafe { libc::open(path.as_ptr() as *const i8, flags) };
     if status < 0 {
-        let error_text = unsafe {
-            let errno = *libc::__errno_location();
-            wrap_string(libc::strerror(errno))
-        };
-        let kind = unsafe { map_errno() };
-        Err(Error::new(kind, error_text.as_str()))
+        let error = unsafe { get_errno() };
+        Err(error)
     } else {
         Ok(status)
+    }
+}
+
+pub fn get_file_uid(path: &PathBuf) -> Result<UserId> {
+    let path = path_to_str(path)?;
+    let path = CString::new(path)?;
+    let stat: libc::stat = unsafe { stat_file(&path)? };
+    Ok(stat.st_uid)
+}
+
+pub fn get_file_gid(path: &PathBuf) -> Result<GroupId> {
+    let path = path_to_str(path)?;
+    let path = CString::new(path)?;
+    let stat: libc::stat = unsafe { stat_file(&path)? };
+    Ok(stat.st_gid)
+}
+
+fn path_to_str(buf: &PathBuf) -> Result<&str> {
+    buf.to_str().ok_or(Error::new(ErrorKind::InvalidData, "Invalid file path"))
+}
+
+unsafe fn stat_file(path: &CString) -> Result<libc::stat> {
+    let mut buf: libc::stat = std::mem::zeroed();
+    let status = libc::stat(path.as_ptr(), &mut buf);
+    if status < 0 {
+        Err(get_errno())
+    } else {
+        Ok(buf)
     }
 }
 
@@ -69,12 +96,14 @@ unsafe fn wrap_string(ptr: *mut i8) -> String {
     String::from_raw_parts(ptr as *mut u8, len, len)
 }
 
-unsafe fn map_errno() -> ErrorKind {
+unsafe fn get_errno() -> Error {
     let errno = *libc::__errno_location();
-    match errno {
+    let error_text = wrap_string(libc::strerror(errno));
+    let kind = match errno {
         1 => ErrorKind::PermissionDenied,
         2 => ErrorKind::NotFound,
         4 => ErrorKind::Interrupted,
         _ => ErrorKind::Other,
-    }
+    };
+    Error::new(kind, error_text.as_str())
 }
