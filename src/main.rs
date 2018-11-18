@@ -47,7 +47,9 @@ fn check_file(path: &str) -> Result<bool> {
     let mode = get_file_mode(&path)?;
     let can_user_read = mode & 0o400 != 0;
     let can_group_read = mode & 0o040 != 0;
-    Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
+    Ok(
+        (user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read),
+    )
 }
 
 pub struct Shell {
@@ -62,7 +64,10 @@ impl Shell {
     pub fn new() -> Result<Shell> {
         let user = get_uid();
         let mut variables: HashMap<String, String> = HashMap::new();
-        variables.insert(String::from("path"), var("PATH").unwrap_or(String::from("/usr/bin")));
+        variables.insert(
+            String::from("path"),
+            var("PATH").unwrap_or(String::from("/usr/bin")),
+        );
         variables.insert(String::from("home"), get_home_dir(user)?);
         variables.insert(String::from("cwd"), get_current_dir()?);
         variables.insert(String::from("prompt"), Self::get_prompt(user));
@@ -100,7 +105,7 @@ impl Shell {
             0 => panic!("Something went REALLY wrong"), // first argument MUST be present
             1 => args[0].starts_with('-'), // we had no arguments and started as -<something>,
             2 => args[1].eq(&"-l".to_string()), // we had only one argument - "-l",
-            _ => false
+            _ => false,
         }
     }
 
@@ -118,8 +123,10 @@ impl Shell {
             Some(home) => {
                 let mut rc_file = std::path::PathBuf::from(home);
                 rc_file.push(rc_name);
-                let rc_file = rc_file.to_str()
-                    .ok_or(Error::new(ErrorKind::InvalidData, "Path is not valid UTF-8"))?;
+                let rc_file = rc_file.to_str().ok_or(Error::new(
+                    ErrorKind::InvalidData,
+                    "Path is not valid UTF-8",
+                ))?;
                 return if check_file(&rc_file)? {
                     self.interpret(&rc_file)
                 } else {
@@ -143,8 +150,10 @@ impl Shell {
     fn get_variable(&self, name: &str) -> Result<&String> {
         let error_text = format!("{} variable is not found", name);
         let error_text = error_text.as_str();
-        self.variables.get(name)
-            .ok_or(Error::new(ErrorKind::NotFound, error_text))
+        self.variables.get(name).ok_or(Error::new(
+            ErrorKind::NotFound,
+            error_text,
+        ))
     }
 }
 
@@ -155,35 +164,39 @@ mod tests {
     #[test]
     fn is_login_regular() {
         let args: Vec<String> = vec!["rsh", "hello.rsh"]
-            .iter().map(|s| s.to_string()).collect();
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(Shell::is_login(&args), false);
     }
 
     #[test]
     fn is_login_minus_and_arg() {
         let args = vec!["-rsh", "hello.rsh"]
-            .iter().map(|s| s.to_string()).collect();
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(Shell::is_login(&args), false);
     }
 
     #[test]
     fn is_login_minus_no_args() {
-        let args = vec!["-rsh"]
-            .iter().map(|s| s.to_string()).collect();
+        let args = vec!["-rsh"].iter().map(|s| s.to_string()).collect();
         assert_eq!(Shell::is_login(&args), true);
     }
 
     #[test]
     fn is_login_argument_login() {
-        let args = vec!["rsh", "-l"]
-            .iter().map(|s| s.to_string()).collect();
+        let args = vec!["rsh", "-l"].iter().map(|s| s.to_string()).collect();
         assert_eq!(Shell::is_login(&args), true);
     }
 
     #[test]
     fn is_login_argument_login_and_another() {
         let args = vec!["rsh", "-l", "hello.rsh"]
-            .iter().map(|s| s.to_string()).collect();
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(Shell::is_login(&args), false);
     }
 }
