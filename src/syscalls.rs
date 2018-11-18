@@ -130,7 +130,7 @@ pub fn read_file(fdi: FileDescriptorId) -> Result<String> {
 pub type ExitCode = i32;
 
 pub fn exit_error(exit_code: ExitCode, text: &str) -> ! {
-    write_to_file(2, text);
+    write_to_file(2, text).unwrap();
     unsafe { libc::exit(exit_code) }
 }
 

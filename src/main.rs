@@ -7,7 +7,7 @@ use std::io::Result;
 use std::ops::Add;
 
 use splitter::split_arguments;
-use syscalls::{GroupId, UserId};
+use syscalls::*;
 
 mod splitter;
 mod syscalls;
@@ -26,9 +26,9 @@ fn main() {
             .skip(1) // skipping the name of the shell
             .filter(|arg| !arg.starts_with('-')) // filtering options
             .for_each(|path| {
-                if let Err(reason) = shell.interpret(path) {
-                    let error = format!("{}: {}", path, &reason);
-                    syscalls::exit_error(1, &error);
+                if let Err(reason) = shell.interpret(path.as_str()) {
+                    let error = format!("{}: {}", path.as_str(), reason.to_string().as_str());
+                    exit_error(1, error.as_str());
                 }
             });
     } else {
@@ -40,11 +40,11 @@ fn main() {
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
 fn check_file(path: &str) -> Result<bool> {
-    let file_uid: UserId = syscalls::get_file_uid(&path)?;
-    let file_gid: GroupId = syscalls::get_file_gid(&path)?;
-    let user_uid: UserId = syscalls::get_uid();
-    let user_gid: GroupId = syscalls::get_gid();
-    let mode = syscalls::get_file_mode(&path)?;
+    let file_uid: UserId = get_file_uid(&path)?;
+    let file_gid: GroupId = get_file_gid(&path)?;
+    let user_uid: UserId = get_uid();
+    let user_gid: GroupId = get_gid();
+    let mode = get_file_mode(&path)?;
     let can_user_read = mode & 0o400 != 0;
     let can_group_read = mode & 0o040 != 0;
     Ok((user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read))
@@ -54,17 +54,17 @@ pub struct Shell {
     pub variables: HashMap<String, String>,
     pub is_login: bool,
     pub argv: Vec<String>,
-    pub user: syscalls::UserId,
-    pub status: syscalls::ExitCode,
+    pub user: UserId,
+    pub status: ExitCode,
 }
 
 impl Shell {
     pub fn new() -> Result<Shell> {
-        let user = syscalls::get_uid();
+        let user = get_uid();
         let mut variables: HashMap<String, String> = HashMap::new();
         variables.insert(String::from("path"), var("PATH").unwrap_or(String::from("/usr/bin")));
-        variables.insert(String::from("home"), syscalls::get_home_dir(user)?);
-        variables.insert(String::from("cwd"), syscalls::get_current_dir()?);
+        variables.insert(String::from("home"), get_home_dir(user)?);
+        variables.insert(String::from("cwd"), get_current_dir()?);
         variables.insert(String::from("prompt"), Self::get_prompt(user));
         let mut argv = args().collect();
         Ok(Shell {
@@ -77,8 +77,8 @@ impl Shell {
     }
 
     pub fn interpret(&self, path: &str) -> Result<()> {
-        let fdi = syscalls::open_file(path, libc::O_RDONLY)?;
-        let content = syscalls::read_file(fdi)?;
+        let fdi = open_file(path, libc::O_RDONLY)?;
+        let content = read_file(fdi)?;
         for line in content.lines() {
             self.execute(line);
         }
@@ -90,7 +90,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            syscalls::write_to_file(1, arg.as_str());
+            write_to_file(1, arg.as_str());
         }
     }
 
@@ -106,7 +106,7 @@ impl Shell {
 
     /// Gets text for prompt from the system
     fn get_prompt(user: UserId) -> String {
-        let hostname = syscalls::get_hostname().unwrap_or("hostname".to_string());
+        let hostname = get_hostname().unwrap_or("hostname".to_string());
         let suffix = if user == 0 { "#" } else { "%" };
         hostname.add(suffix)
     }
@@ -131,11 +131,11 @@ impl Shell {
 
     pub fn interact(&self) -> Result<()> {
         let prompt = self.get_variable("prompt")?;
-        syscalls::write_to_file(1, prompt)?;
-        let input = syscalls::read_file(0)?;
+        write_to_file(1, prompt)?;
+        let input = read_file(0)?;
         if input.contains("pwd") {
             let cwd = self.get_variable("cwd")?;
-            syscalls::write_to_file(1, cwd)?;
+            write_to_file(1, cwd)?;
         }
         Ok(())
     }
