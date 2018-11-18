@@ -174,7 +174,7 @@ unsafe fn get_errno() -> Error {
     Error::new(kind, error_text)
 }
 
-unsafe fn create_buf(capacity: usize) -> *mut i8 {
+unsafe fn create_buf(capacity: usize) -> *mut libc::c_char {
     CString::from_vec_unchecked(
         Vec::with_capacity(capacity)
     ).into_raw()

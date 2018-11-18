@@ -25,7 +25,7 @@ fn main() {
         .filter(|arg| !arg.starts_with('-')) // filtering options
         .for_each(|path| {
             if let Err(reason) = shell.interpret(&path) {
-                let error = format!("{:?}: {}", &path, &reason);
+                let error = format!("{}: {}", &path, &reason);
                 syscalls::exit_error(1, &error);
             }
         });
