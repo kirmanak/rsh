@@ -29,17 +29,21 @@ pub fn get_gid() -> GroupId {
 }
 
 /// Gets user's home directory from the corresponding record in passwd.
-pub fn get_home_dir(uid: UserId) -> Option<String> {
+pub fn get_home_dir(uid: UserId) -> Result<String> {
     let pwd_entry: *mut libc::passwd = unsafe { libc::getpwuid(uid) };
     if pwd_entry.is_null() {
-        None
+        let error = unsafe { get_errno() };
+        Err(error)
     } else {
         let dir = unsafe { (*pwd_entry).pw_dir };
         if dir.is_null() {
-            None
+            Err(Error::new(ErrorKind::NotFound, "Home directory is not found"))
         } else {
             let dir = unsafe { copy_raw(dir) };
-            dir.into_string().ok()
+            dir.into_string().map_err(|reason| Error::new(
+                ErrorKind::InvalidData,
+                reason,
+            ))
         }
     }
 }
@@ -47,8 +51,8 @@ pub fn get_home_dir(uid: UserId) -> Option<String> {
 pub type FileDescriptorId = i32;
 
 pub fn open_file(path: &str, flags: i32) -> Result<FileDescriptorId> {
-    let path = CString::new(path)?;
-    let status = unsafe { libc::open(path.into_raw(), flags) };
+    let path = CString::new(path)?.into_raw();
+    let status = unsafe { libc::open(path, flags) };
     if status < 0 {
         let error = unsafe { get_errno() };
         Err(error)
