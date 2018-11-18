@@ -141,33 +141,32 @@ unsafe fn copy_raw(ptr: *mut libc::c_char) -> CString {
 }
 
 unsafe fn get_errno() -> Error {
-    let errno_ptr = libc::__errno_location();
-    let text_ptr = if errno_ptr.is_null() {
-        libc::PT_NULL as *mut libc::c_char
-    } else {
-        libc::strerror(*errno_ptr) // can return null as well
-    };
-    let error_text: String = if text_ptr.is_null() {
-        "The description of the error is unavailable.".to_string()
-    } else {
-        copy_raw(text_ptr).into_string()
-            .unwrap_or("The description of the error is not valid UTF-8 string!".to_string())
-    };
-    let kind = if errno_ptr.is_null() {
-        ErrorKind::Other
-    } else {
-        match *errno_ptr {
-            1 => ErrorKind::PermissionDenied,
-            2 => ErrorKind::NotFound,
-            4 => ErrorKind::Interrupted,
-            _ => ErrorKind::Other,
+    if let Some(errno_ptr) = nullable(libc::__errno_location()) {
+        if let Some(text_ptr) = nullable(libc::strerror(*errno_ptr)) {
+            // both pointers are not null
+            let text = copy_raw(text_ptr).into_string()
+                .unwrap_or(String::from("Error description was not valid UTF-8 string"));
+            let kind = match *errno_ptr {
+                1 => ErrorKind::PermissionDenied,
+                2 => ErrorKind::NotFound,
+                4 => ErrorKind::Interrupted,
+                _ => ErrorKind::Other,
+            };
+            Error::new(kind, text)
+        } else {
+            // errno_ptr is not null, but text_ptr is
+            Error::new(ErrorKind::Other, "Unknown error")
         }
-    };
-    Error::new(kind, error_text)
+    } else {
+        // errno_ptr is null
+        Error::new(ErrorKind::Other, "Unknown error")
+    }
+}
+
+fn nullable<T>(ptr: *mut T) -> Option<*mut T> {
+    if ptr.is_null() { None } else { Some(ptr) }
 }
 
 unsafe fn create_buf(capacity: usize) -> *mut libc::c_char {
-    CString::from_vec_unchecked(
-        vec![0; capacity]
-    ).into_raw()
+    CString::from_vec_unchecked(vec![0; capacity]).into_raw()
 }
