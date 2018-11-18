@@ -151,7 +151,7 @@ unsafe fn copy_raw(ptr: *mut libc::c_char) -> CString {
 unsafe fn get_errno() -> Error {
     let errno_ptr = libc::__errno_location();
     let text_ptr = if errno_ptr.is_null() {
-        libc::PT_NULL as *mut i8
+        libc::PT_NULL as *mut libc::c_char
     } else {
         libc::strerror(*errno_ptr) // can return null as well
     };
