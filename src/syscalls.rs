@@ -4,13 +4,11 @@ use std::io::{Error, ErrorKind, Result};
 /// Gets the name of the host using gethostname() from libc.
 /// Returns None in case of error in gethostname() or in String::from_utf8().
 pub fn get_hostname() -> Option<String> {
-    let capacity = 256; // according to man, any host name is limited to 256 characters
-    let buf = Vec::with_capacity(capacity);
-    let raw_string = unsafe { CString::from_vec_unchecked(buf) };
-    let raw_string = raw_string.into_raw();
-    let status = unsafe { libc::gethostname(raw_string, capacity) };
+    let capacity = 256; // MAXHOSTNAMELEN is unavailable in libc :(
+    let buf = unsafe { create_buf(capacity) };
+    let status = unsafe { libc::gethostname(buf, capacity) };
     if status == 0 {
-        let raw_string = unsafe { CString::from_raw(raw_string) };
+        let raw_string = unsafe { CString::from_raw(buf) };
         raw_string.into_string().ok()
     } else {
         None
@@ -40,7 +38,7 @@ pub fn get_home_dir(uid: UserId) -> Option<String> {
         if dir.is_null() {
             None
         } else {
-            let dir = unsafe { CString::from_raw(dir) };
+            let dir = unsafe { copy_raw(dir) };
             dir.into_string().ok()
         }
     }
@@ -93,9 +91,7 @@ pub fn write_to_file(fdi: FileDescriptorId, text: &str) -> Result<()> {
 
 pub fn get_current_dir() -> Result<String> {
     let capacity = libc::PATH_MAX as usize;
-    let mut buf = Vec::with_capacity(capacity);
-    let buf = unsafe { CString::from_vec_unchecked(buf) };
-    let buf = buf.into_raw();
+    let buf = unsafe { create_buf(capacity) };
     let name_ptr = unsafe { libc::getcwd(buf, capacity) };
     if name_ptr.is_null() {
         let error = unsafe { get_errno() };
@@ -109,17 +105,15 @@ pub fn get_current_dir() -> Result<String> {
 
 pub fn read_file(fdi: FileDescriptorId) -> Result<String> {
     let capacity = 256; // because I can
-    let buf = Vec::with_capacity(capacity);
-    let buf = unsafe { CString::from_vec_unchecked(buf) };
-    let buf_ptr = buf.into_raw();
+    let buf = unsafe { create_buf(capacity) };
     let mut result = String::new();
-    let mut status = unsafe { libc::read(fdi, buf_ptr as *mut libc::c_void, capacity) };
+    let mut status = unsafe { libc::read(fdi, buf as *mut libc::c_void, capacity) };
     while status > 0 {
-        let data = unsafe { CString::from_raw(buf_ptr) };
+        let data = unsafe { CString::from_raw(buf) };
         let data = data.to_str()
             .map_err(|reason| Error::new(ErrorKind::InvalidData, reason))?;
         result.push_str(data);
-        status = unsafe { libc::read(fdi, buf_ptr as *mut libc::c_void, capacity) };
+        status = unsafe { libc::read(fdi, buf as *mut libc::c_void, capacity) };
     }
     if status < 0 {
         let error = unsafe { get_errno() };
@@ -146,24 +140,42 @@ unsafe fn stat_file(path: &CString) -> Result<libc::stat> {
     }
 }
 
+/// Makes a copy of a string which was allocated by the system.
+/// Otherwise Rust tries to manage the memory of the string which leads to segfault.
+unsafe fn copy_raw(ptr: *mut libc::c_char) -> CString {
+    let buf = create_buf(libc::strlen(ptr));
+    libc::strcpy(buf, ptr);
+    CString::from_raw(buf)
+}
+
 unsafe fn get_errno() -> Error {
     let errno_ptr = libc::__errno_location();
-    if errno_ptr.is_null() {
-        exit_error(1, "errno location is unknown!");
-    }
-    let errno = *errno_ptr;
-    let text_ptr = libc::strerror(errno);
-    if text_ptr.is_null() {
-        exit_error(1, "errno status is invalid!");
-    }
-    let len = libc::strlen(text_ptr);
-    // MUST NOT be CString, otherwise Rust tries to free the memory, but it causes a segfault
-    let error_text = String::from_raw_parts(text_ptr as *mut u8, len, len);
-    let kind = match errno {
-        1 => ErrorKind::PermissionDenied,
-        2 => ErrorKind::NotFound,
-        4 => ErrorKind::Interrupted,
-        _ => ErrorKind::Other,
+    let text_ptr = if errno_ptr.is_null() {
+        libc::PT_NULL as *mut i8
+    } else {
+        libc::strerror(*errno_ptr) // can return null as well
+    };
+    let error_text: String = if text_ptr.is_null() {
+        "The description of the error is unavailable.".to_string()
+    } else {
+        copy_raw(text_ptr).into_string()
+            .unwrap_or("The description of the error is not valid UTF-8 string!".to_string())
+    };
+    let kind = if errno_ptr.is_null() {
+        ErrorKind::Other
+    } else {
+        match *errno_ptr {
+            1 => ErrorKind::PermissionDenied,
+            2 => ErrorKind::NotFound,
+            4 => ErrorKind::Interrupted,
+            _ => ErrorKind::Other,
+        }
     };
     Error::new(kind, error_text)
+}
+
+unsafe fn create_buf(capacity: usize) -> *mut i8 {
+    CString::from_vec_unchecked(
+        Vec::with_capacity(capacity)
+    ).into_raw()
 }
