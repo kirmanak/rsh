@@ -180,6 +180,6 @@ unsafe fn get_errno() -> Error {
 
 unsafe fn create_buf(capacity: usize) -> *mut libc::c_char {
     CString::from_vec_unchecked(
-        Vec::with_capacity(capacity)
+        vec![0; capacity]
     ).into_raw()
 }
