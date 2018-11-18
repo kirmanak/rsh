@@ -103,10 +103,8 @@ pub fn read_file(fdi: FileDescriptorId) -> Result<String> {
     let mut result = String::new();
     let mut status = unsafe { libc::read(fdi, buf as *mut libc::c_void, capacity) };
     while status > 0 {
-        let data = unsafe { CString::from_raw(buf) };
-        let data = data.to_str()
-            .map_err(|reason| Error::new(ErrorKind::InvalidData, reason))?;
-        result.push_str(data);
+        let data = unsafe { String::from_raw_parts(buf as *mut u8, status as usize, status as usize) };
+        result += data.as_str();
         status = unsafe { libc::read(fdi, buf as *mut libc::c_void, capacity) };
     }
     status_to_result(status, result)
@@ -124,7 +122,7 @@ fn status_to_result<T>(status: libc::ssize_t, result: T) -> Result<T> {
 pub type ExitCode = i32;
 
 pub fn exit_error(exit_code: ExitCode, text: &str) -> ! {
-    write_to_file(2, text).unwrap();
+    write_to_file(2, text).ok();
     unsafe { libc::exit(exit_code) }
 }
 

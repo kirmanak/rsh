@@ -15,11 +15,11 @@ mod syscalls;
 fn main() {
     let shell = Shell::new().unwrap();
     if shell.is_login {
-        shell.interpret("/etc/.login");
-        shell.interpret_rc(".cshrc");
-        shell.interpret_rc(".login");
+        shell.interpret("/etc/.login").ok();
+        shell.interpret_rc(".cshrc").ok();
+        shell.interpret_rc(".login").ok();
     } else {
-        shell.interpret_rc(".cshrc");
+        shell.interpret_rc(".cshrc").ok();
     }
     if shell.argv.len() > 1 {
         shell.argv.iter() // iterating over argv
@@ -32,7 +32,7 @@ fn main() {
                 }
             });
     } else {
-        shell.interact();
+        shell.interact().ok();
     }
 }
 
@@ -66,7 +66,7 @@ impl Shell {
         variables.insert(String::from("home"), get_home_dir(user)?);
         variables.insert(String::from("cwd"), get_current_dir()?);
         variables.insert(String::from("prompt"), Self::get_prompt(user));
-        let mut argv = args().collect();
+        let argv = args().collect();
         Ok(Shell {
             variables,
             is_login: Self::is_login(&argv),
@@ -90,7 +90,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            write_to_file(1, arg.as_str());
+            write_to_file(1, arg.as_str()).ok();
         }
     }
 
