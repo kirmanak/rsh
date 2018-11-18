@@ -1,10 +1,14 @@
+extern crate nix;
+
 use std::collections::HashMap;
 use std::env::args;
 use std::env::var;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Result;
 use std::ops::Add;
+use std::path::Path;
+
+use nix::Result;
+use nix::sys::stat::{Mode, stat};
+use nix::unistd::{Gid, Uid};
 
 use splitter::split_arguments;
 use syscalls::*;
@@ -39,16 +43,15 @@ fn main() {
 
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
-fn check_file(path: &str) -> Result<bool> {
-    let file_uid: UserId = get_file_uid(&path)?;
-    let file_gid: GroupId = get_file_gid(&path)?;
-    let user_uid: UserId = get_uid();
-    let user_gid: GroupId = get_gid();
-    let mode = get_file_mode(&path)?;
-    let can_user_read = mode & 0o400 != 0;
-    let can_group_read = mode & 0o040 != 0;
+fn check_file(path: &Path) -> Result<bool> {
+    let file_stat = stat(path)?;
+    let file_uid = Uid::from_raw(file_stat.st_uid);
+    let file_gid = Gid::from_raw(file_stat.st_gid);
+    let user_uid = Uid::current();
+    let user_gid = Gid::current();
+    let mode = Mode::from_bits_truncate(file_stat.st_mode);
     Ok(
-        (user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read),
+        (user_uid == file_uid && mode.contains(Mode::S_IRUSR)) || (user_gid == file_gid && mode.contains(Mode::S_IRGRP)),
     )
 }
 

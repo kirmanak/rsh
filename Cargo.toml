@@ -5,3 +5,4 @@ authors = ["Kirill Kamakin <k.kamakin@protonmail.ch>"]
 
 [dependencies]
 libc = "0.2"
+nix = "0.11"
