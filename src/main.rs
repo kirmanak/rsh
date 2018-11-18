@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env::args;
+use std::env::var;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Result;
@@ -12,7 +13,7 @@ mod splitter;
 mod syscalls;
 
 fn main() {
-    let shell = Shell::new();
+    let shell = Shell::new().unwrap();
     if shell.is_login {
         shell.interpret("/etc/.login");
         shell.interpret_rc(".cshrc");
@@ -20,15 +21,19 @@ fn main() {
     } else {
         shell.interpret_rc(".cshrc");
     }
-    args() // iterating over argv
-        .skip(1) // skipping the name of the shell
-        .filter(|arg| !arg.starts_with('-')) // filtering options
-        .for_each(|path| {
-            if let Err(reason) = shell.interpret(&path) {
-                let error = format!("{}: {}", &path, &reason);
-                syscalls::exit_error(1, &error);
-            }
-        });
+    if shell.argv.len() > 1 {
+        shell.argv.iter() // iterating over argv
+            .skip(1) // skipping the name of the shell
+            .filter(|arg| !arg.starts_with('-')) // filtering options
+            .for_each(|path| {
+                if let Err(reason) = shell.interpret(path) {
+                    let error = format!("{}: {}", path, &reason);
+                    syscalls::exit_error(1, &error);
+                }
+            });
+    } else {
+        shell.interact();
+    }
 }
 
 
@@ -48,41 +53,34 @@ fn check_file(path: &str) -> Result<bool> {
 pub struct Shell {
     pub variables: HashMap<String, String>,
     pub is_login: bool,
-    pub home: Option<String>,
-    pub path: Vec<String>,
     pub argv: Vec<String>,
     pub user: syscalls::UserId,
-    pub cwd: Result<String>,
-    pub prompt: String,
-    pub status: Option<std::process::ExitStatus>,
+    pub status: syscalls::ExitCode,
 }
 
 impl Shell {
-    pub fn new() -> Shell {
-        let path = std::env::var("PATH").unwrap_or(String::from("/usr/bin"));
-        let path = path.split(':').map(|s| s.to_string()).collect();
+    pub fn new() -> Result<Shell> {
         let user = syscalls::get_uid();
-        let home = syscalls::get_home_dir(user);
-        let mut argv = Vec::with_capacity(args().len());
-        args().for_each(|arg| argv.push(arg.clone()));
-        Shell {
-            variables: HashMap::new(),
+        let mut variables: HashMap<String, String> = HashMap::new();
+        variables.insert(String::from("path"), var("PATH").unwrap_or(String::from("/usr/bin")));
+        variables.insert(String::from("home"), syscalls::get_home_dir(user)?);
+        variables.insert(String::from("cwd"), syscalls::get_current_dir()?);
+        variables.insert(String::from("prompt"), Self::get_prompt(user));
+        let mut argv = args().collect();
+        Ok(Shell {
+            variables,
             is_login: Self::is_login(&argv),
-            home,
-            path,
-            cwd: syscalls::get_current_dir(),
-            prompt: Self::get_prompt(user),
             argv,
             user,
-            status: None,
-        }
+            status: 0,
+        })
     }
 
     pub fn interpret(&self, path: &str) -> Result<()> {
         let fdi = syscalls::open_file(path, libc::O_RDONLY)?;
         let content = syscalls::read_file(fdi)?;
         for line in content.lines() {
-            syscalls::write_to_file(1, line)?;
+            self.execute(line);
         }
         Ok(())
     }
@@ -90,6 +88,10 @@ impl Shell {
     /// Parses the command and executes it
     fn execute(&self, line: &str) {
         let arguments = split_arguments(line);
+        for arg in arguments {
+            let arg = format!("{}\n", arg);
+            syscalls::write_to_file(1, &arg);
+        }
     }
 
     /// Checks whether we're the login shell or not
@@ -111,7 +113,7 @@ impl Shell {
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
     pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
-        match &self.home {
+        match &self.variables.get("home") {
             None => return Err(Error::new(ErrorKind::NotFound, "home dir is not found")),
             Some(home) => {
                 let mut rc_file = std::path::PathBuf::from(home);
@@ -125,7 +127,25 @@ impl Shell {
                 };
             }
         }
+    }
 
+    pub fn interact(&self) -> Result<()> {
+        println!("Hello, world!");
+        let prompt = self.get_variable("prompt")?;
+        syscalls::write_to_file(1, prompt)?;
+        let input = syscalls::read_file(0)?;
+        if input.contains("pwd") {
+            let cwd = self.get_variable("cwd")?;
+            syscalls::write_to_file(1, cwd)?;
+        }
+        Ok(())
+    }
+
+    fn get_variable(&self, name: &str) -> Result<&String> {
+        let error_text = format!("{} variable is not found", name);
+        let error_text = error_text.as_str();
+        self.variables.get(name)
+            .ok_or(Error::new(ErrorKind::NotFound, error_text))
     }
 }
 
