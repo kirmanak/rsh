@@ -90,7 +90,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            syscalls::write_to_file(1, &arg);
+            syscalls::write_to_file(1, arg.as_str());
         }
     }
 
@@ -130,7 +130,6 @@ impl Shell {
     }
 
     pub fn interact(&self) -> Result<()> {
-        println!("Hello, world!");
         let prompt = self.get_variable("prompt")?;
         syscalls::write_to_file(1, prompt)?;
         let input = syscalls::read_file(0)?;
