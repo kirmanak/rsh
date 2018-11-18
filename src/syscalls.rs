@@ -53,12 +53,7 @@ pub type FileDescriptorId = i32;
 pub fn open_file(path: &str, flags: i32) -> Result<FileDescriptorId> {
     let path = CString::new(path)?.into_raw();
     let status = unsafe { libc::open(path, flags) };
-    if status < 0 {
-        let error = unsafe { get_errno() };
-        Err(error)
-    } else {
-        Ok(status)
-    }
+    status_to_result(status as libc::ssize_t, status)
 }
 
 pub fn get_file_uid(path: &str) -> Result<UserId> {
@@ -85,12 +80,7 @@ pub fn write_to_file(fdi: FileDescriptorId, text: &str) -> Result<()> {
     let len = text.len();
     let text = CString::new(text)?;
     let status = unsafe { libc::write(fdi, text.into_raw() as *const libc::c_void, len) };
-    if status < 0 {
-        let error = unsafe { get_errno() };
-        Err(error)
-    } else {
-        Ok(())
-    }
+    status_to_result(status, ())
 }
 
 pub fn get_current_dir() -> Result<String> {
@@ -119,6 +109,10 @@ pub fn read_file(fdi: FileDescriptorId) -> Result<String> {
         result.push_str(data);
         status = unsafe { libc::read(fdi, buf as *mut libc::c_void, capacity) };
     }
+    status_to_result(status, result)
+}
+
+fn status_to_result<T>(status: libc::ssize_t, result: T) -> Result<T> {
     if status < 0 {
         let error = unsafe { get_errno() };
         Err(error)
@@ -137,11 +131,7 @@ pub fn exit_error(exit_code: ExitCode, text: &str) -> ! {
 unsafe fn stat_file(path: &CString) -> Result<libc::stat> {
     let mut buf: libc::stat = std::mem::zeroed();
     let status = libc::stat(path.as_ptr(), &mut buf);
-    if status < 0 {
-        Err(get_errno())
-    } else {
-        Ok(buf)
-    }
+    status_to_result(status as libc::ssize_t, buf)
 }
 
 /// Makes a copy of a string which was allocated by the system.
