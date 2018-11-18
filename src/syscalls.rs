@@ -30,21 +30,15 @@ pub fn get_gid() -> GroupId {
 
 /// Gets user's home directory from the corresponding record in passwd.
 pub fn get_home_dir(uid: UserId) -> Result<String> {
-    let pwd_entry: *mut libc::passwd = unsafe { libc::getpwuid(uid) };
-    if pwd_entry.is_null() {
-        let error = unsafe { get_errno() };
-        Err(error)
-    } else {
-        let dir = unsafe { (*pwd_entry).pw_dir };
-        if dir.is_null() {
-            Err(Error::new(ErrorKind::NotFound, "Home directory is not found"))
-        } else {
+    if let Some(pwd_entry) = unsafe { nullable(libc::getpwuid(uid)) } {
+        if let Some(dir) = unsafe { nullable((*pwd_entry).pw_dir) } {
             let dir = unsafe { copy_raw(dir) };
-            dir.into_string().map_err(|reason| Error::new(
-                ErrorKind::InvalidData,
-                reason,
-            ))
+            dir.into_string().map_err(|reason| Error::new(ErrorKind::InvalidData, reason))
+        } else {
+            Err(Error::new(ErrorKind::NotFound, "Home directory is not found"))
         }
+    } else {
+        Err(unsafe { get_errno() })
     }
 }
 
@@ -143,7 +137,7 @@ unsafe fn copy_raw(ptr: *mut libc::c_char) -> CString {
 unsafe fn get_errno() -> Error {
     if let Some(errno_ptr) = nullable(libc::__errno_location()) {
         if let Some(text_ptr) = nullable(libc::strerror(*errno_ptr)) {
-            // both pointers are not null
+// both pointers are not null
             let text = copy_raw(text_ptr).into_string()
                 .unwrap_or(String::from("Error description was not valid UTF-8 string"));
             let kind = match *errno_ptr {
@@ -154,11 +148,11 @@ unsafe fn get_errno() -> Error {
             };
             Error::new(kind, text)
         } else {
-            // errno_ptr is not null, but text_ptr is
+// errno_ptr is not null, but text_ptr is
             Error::new(ErrorKind::Other, "Unknown error")
         }
     } else {
-        // errno_ptr is null
+// errno_ptr is null
         Error::new(ErrorKind::Other, "Unknown error")
     }
 }
