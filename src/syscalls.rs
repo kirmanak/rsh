@@ -169,6 +169,6 @@ fn nullable<T>(ptr: *mut T) -> Option<*mut T> {
     if ptr.is_null() { None } else { Some(ptr) }
 }
 
-unsafe fn create_buf(capacity: usize) -> *mut libc::c_char {
-    CString::from_vec_unchecked(vec![0; capacity]).into_raw()
+unsafe fn create_buf<T>(capacity: usize) -> *mut T {
+    vec![0u8; capacity].as_mut_ptr() as *mut T
 }
