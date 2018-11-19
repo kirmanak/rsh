@@ -1,16 +1,16 @@
 extern crate libc;
 extern crate nix;
 
-use std::borrow::Cow;
 use std::ffi::CStr;
 
-use libc::{c_char, getpwuid, passwd, strcpy, strlen};
 use nix::{Error, Result};
 use nix::unistd::Uid;
 
+use self::libc::{c_char, getpwuid, passwd, strcpy, strlen};
+
 /// Gets user's home directory from the corresponding record in /etc/passwd.
 pub fn get_home_dir(uid: Uid) -> Result<String> {
-    let passwd_ptr: *mut passwd = unsafe { getpwuid(uid) };
+    let passwd_ptr: *mut passwd = unsafe { getpwuid(uid.into()) };
     if !passwd_ptr.is_null() {
         let dir: *mut c_char = unsafe { (*passwd_ptr).pw_dir };
         if !dir.is_null() {
