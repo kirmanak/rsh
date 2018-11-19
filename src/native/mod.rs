@@ -14,6 +14,10 @@ pub fn get_hostname() -> Result<String> {
     let mut buf = vec![0; 256]; // MAXHOSTNAMELEN is unavailable in libc :(
     let result: c_int = unsafe { gethostname(buf.as_mut_ptr() as *mut c_char, buf.capacity()) };
     if result == 0 {
+        unsafe {
+            let len = strlen(buf.as_ptr() as *const c_char);
+            buf.set_len(len);
+        }
         read_buf(buf)
     } else {
         Err(Error::from_errno())
@@ -93,6 +97,10 @@ pub fn get_current_dir() -> Result<PathBuf> {
     if name_ptr.is_null() {
         Err(Error::Errno(Errno::last()))
     } else {
+        unsafe {
+            let len = strlen(buf.as_ptr() as *const c_char);
+            buf.set_len(len);
+        }
         let dir = read_buf(buf)?;
         Ok(PathBuf::from(dir))
     }
@@ -144,8 +152,6 @@ unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
 }
 
 fn read_buf(buf: Vec<u8>) -> Result<String> {
-    let len = unsafe { strlen(buf.as_ptr() as *const c_char) };
-    let buf = buf[0..len].to_vec();
     String::from_utf8(buf).map_err(|_| Error::InvalidUnicode)
 }
 
