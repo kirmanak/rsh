@@ -1,6 +1,6 @@
 extern crate libc;
 
-use std::ffi::CString;
+use std::ffi::{CString, OsString};
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -120,6 +120,10 @@ pub fn write_exit(exit_code: ExitCode, text: &CString) -> ! {
     unsafe { libc::exit(exit_code) }
 }
 
+pub fn os_to_c(os: OsString) -> Result<CString, Error> {
+    CString::new(os).map_err(|_| Error::InvalidCString)
+}
+
 unsafe fn stat_file(path: &PathBuf) -> Result<stat, Error> {
     let path = native_path(path)?;
     let mut buf: stat = std::mem::zeroed();
@@ -145,7 +149,7 @@ fn read_buf(buf: Vec<u8>) -> Result<CString, Error> {
 }
 
 fn native_path(path: &PathBuf) -> Result<CString, Error> {
-    CString::new(path.into_os_string().into_vec()).map_err(|_| Error::InvalidCString)
+    os_to_c(path.into_os_string())
 }
 
 pub enum Error {
