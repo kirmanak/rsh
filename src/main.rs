@@ -19,24 +19,24 @@ mod splitter;
 mod native;
 
 /// This PATH is used when environmental variable PATH is not set
-const DEFAULT_PATH: PathBuf = PathBuf::from("/usr/bin");
+const DEFAULT_PATH: &str = "/usr/bin";
 /// This path is used to find the first script which should be interpreted by the login shell
-const FIRST_LOGIN: PathBuf = PathBuf::from("/etc/.login");
+const FIRST_LOGIN: &str = "/etc/.login";
 /// This path is used to find the second script which should be interpreted by the login shell
-const SECOND_LOGIN: PathBuf = PathBuf::from(".cshrc");
+const SECOND_LOGIN: &str = ".cshrc";
 /// This path is used to find the third script which should be interpreted by the login shell
-const THIRD_LOGIN: PathBuf = PathBuf::from(".login");
+const THIRD_LOGIN: &str = ".login";
 /// This path is used to find the script which should be interpreted  by a non-login shell
-const NO_LOGIN: PathBuf = SECOND_LOGIN;
+const NO_LOGIN: &str = SECOND_LOGIN;
 
 fn main() {
     let shell = Shell::new().unwrap();
     if shell.is_login {
-        shell.interpret(&FIRST_LOGIN).ok();
-        shell.interpret_rc(&SECOND_LOGIN).ok();
-        shell.interpret_rc(&THIRD_LOGIN).ok();
+        shell.interpret(&PathBuf::from(FIRST_LOGIN)).ok();
+        shell.interpret_rc(&PathBuf::from(SECOND_LOGIN)).ok();
+        shell.interpret_rc(&PathBuf::from(THIRD_LOGIN)).ok();
     } else {
-        shell.interpret_rc(&NO_LOGIN).ok();
+        shell.interpret_rc(&PathBuf::from(NO_LOGIN)).ok();
     }
     if shell.argv.len() > 1 {
         shell.argv.iter() // iterating over argv
