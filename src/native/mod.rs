@@ -1,8 +1,6 @@
 extern crate libc;
 
 use std::ffi::CString;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::exit;
@@ -78,7 +76,7 @@ pub fn get_file_mode(path: &PathBuf) -> Result<FileMode> {
     Ok(stat.st_mode)
 }
 
-pub fn write_to_file(fd: RawFd, text: String) -> Result<isize> {
+pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
     let len = text.len();
     let text = native_string(text)?;
     let status: ssize_t = unsafe { write(fd, text.into_raw() as *const c_void, len) };
@@ -105,7 +103,7 @@ pub fn read_file(fdi: RawFd) -> Result<String> {
     let mut buf = vec![0; 256]; // because I can
     let mut status;
     loop {
-        status = unsafe { libc::read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
+        status = unsafe { read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
         if status <= 0 { break; }
         let slice = &buf[0..status as usize];
         result.extend_from_slice(slice);
@@ -120,7 +118,7 @@ pub fn read_file(fdi: RawFd) -> Result<String> {
 
 pub type ExitCode = i32;
 
-pub fn write_exit(exit_code: ExitCode, text: String) -> ! {
+pub fn write_exit(exit_code: ExitCode, text: &str) -> ! {
     write_to_file(2, text).ok();
     exit(exit_code);
 }
@@ -146,17 +144,18 @@ unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
 }
 
 fn read_buf(buf: Vec<u8>) -> Result<String> {
+    let len = unsafe { strlen(buf.as_ptr() as *const c_char) };
+    let buf = buf[0..len].to_vec();
     String::from_utf8(buf).map_err(|_| Error::InvalidUnicode)
 }
 
-fn native_string(string: String) -> Result<CString> {
+fn native_string(string: &str) -> Result<CString> {
     CString::new(string).map_err(|_| Error::InvalidCString)
 }
 
 /// Creates a null terminated string out of an PathBuf instance
 fn native_path(path: &PathBuf) -> Result<CString> {
     let path = path.to_str().ok_or(Error::InvalidUnicode)?;
-    let path = String::from(path);
     native_string(path)
 }
 
@@ -186,17 +185,17 @@ impl Errno {
     pub fn last() -> Self {
         let errno_ptr: *const c_int = unsafe { __errno_location() };
         if errno_ptr.is_null() {
-            write_exit(1, String::from("errno location is unknown"));
+            write_exit(1, "errno location is unknown");
         } else {
             let code: c_int = unsafe { *errno_ptr };
             let text: *const c_char = unsafe { strerror(code) };
             if text.is_null() {
-                write_exit(2, String::from("errno code is unknown"));
+                write_exit(2, "errno code is unknown");
             } else {
                 if let Ok(text) = unsafe { copy_string(text) } {
                     Errno { code, text }
                 } else {
-                    write_exit(3, String::from("errno string is incorrect C string"));
+                    write_exit(3, "errno string is incorrect C string");
                 }
             }
         }

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::env::{args, var};
-use std::ops::Add;
 use std::path::PathBuf;
 
 use native::*;
@@ -25,15 +24,18 @@ fn main() {
                 .map(PathBuf::from)
                 .for_each(|path| {
                     if let Err(reason) = shell.interpret(&path) {
-                        let error = format!("{:?}: {:?}", path, reason);
-                        write_exit(5, error);
+                        let error = format!("{:?}: {:?}\n", path, reason);
+                        write_exit(5, error.as_str());
                     }
                 });
         } else {
-            shell.interact().ok();
+            if let Err(reason) = shell.interact() {
+                let error = format!("{:?}\n", reason);
+                write_exit(6, error.as_str());
+            }
         }
     } else {
-        write_exit(4,String::from("Failed to initialize the shell"));
+        write_exit(4,"Failed to initialize the shell");
     }
 }
 
@@ -101,14 +103,15 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            write_to_file(1, arg).ok();
+            write_to_file(1, arg.as_str()).ok();
         }
     }
 
     /// Checks whether we're the login shell or not
     fn is_login(args: &Vec<String>) -> bool {
         match args.len() {
-            0 => panic!("Something went REALLY wrong"), // first argument MUST be present
+             // first argument MUST be present
+            0 => write_exit(7,  "Something went REALLY wrong"),
             1 => args[0].starts_with('-'), // we had no arguments and started as -<something>,
             2 => args[1].eq(&"-l".to_string()), // we had only one argument - "-l",
             _ => false,
@@ -117,9 +120,10 @@ impl Shell {
 
     /// Gets text for prompt from the system
     fn get_prompt(user: UserId) -> String {
-        let hostname = get_hostname().unwrap_or("hostname".to_string());
-        let suffix = if user == 0 { "#" } else { "%" };
-        hostname.add(suffix)
+        let mut hostname = get_hostname().unwrap_or(String::from("hostname"));
+        let suffix = if user == 0 { '#' } else { '%' };
+        hostname.push(suffix);
+        hostname
     }
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
@@ -134,13 +138,12 @@ impl Shell {
     }
 
     pub fn interact(&self) -> Result<()> {
-        let prompt = self.prompt.clone();
+        let prompt = self.prompt.as_str();
         write_to_file(1, prompt)?;
         let input = read_file(0)?;
         if input.contains("pwd") {
             let cwd = self.cwd.clone();
             let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-            let cwd = cwd.to_string();
             write_to_file(1, cwd)?;
         }
         Ok(())
