@@ -1,45 +1,46 @@
 use std::collections::HashMap;
-use std::env::args;
-use std::env::var;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Result;
+use std::env::{args, var};
 use std::ops::Add;
+use std::path::PathBuf;
 
+use native::*;
 use splitter::split_arguments;
-use syscalls::*;
 
 mod splitter;
-mod syscalls;
+mod native;
 
 fn main() {
-    let shell = Shell::new().unwrap();
-    if shell.is_login {
-        shell.interpret("/etc/.login").ok();
-        shell.interpret_rc(".cshrc").ok();
-        shell.interpret_rc(".login").ok();
+    if let Ok(shell) = Shell::new() {
+        if shell.is_login {
+            shell.interpret(&PathBuf::from("/etc/.login")).ok();
+            shell.interpret_rc(".cshrc").ok();
+            shell.interpret_rc(".login").ok();
+        } else {
+            shell.interpret_rc(".cshrc").ok();
+        }
+        if shell.argv.len() > 1 {
+            shell.argv.iter() // iterating over argv
+                .skip(1) // skipping the name of the shell
+                .filter(|arg| !arg.starts_with('-')) // filtering options
+                .map(PathBuf::from)
+                .for_each(|path| {
+                    if let Err(reason) = shell.interpret(&path) {
+                        let error = format!("{:?}: {:?}", path, reason);
+                        write_exit(5, error);
+                    }
+                });
+        } else {
+            shell.interact().ok();
+        }
     } else {
-        shell.interpret_rc(".cshrc").ok();
-    }
-    if shell.argv.len() > 1 {
-        shell.argv.iter() // iterating over argv
-            .skip(1) // skipping the name of the shell
-            .filter(|arg| !arg.starts_with('-')) // filtering options
-            .for_each(|path| {
-                if let Err(reason) = shell.interpret(path.as_str()) {
-                    let error = format!("{}: {}", path.as_str(), reason.to_string().as_str());
-                    exit_error(1, error.as_str());
-                }
-            });
-    } else {
-        shell.interact().ok();
+        write_exit(4,String::from("Failed to initialize the shell"));
     }
 }
 
 
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
-fn check_file(path: &str) -> Result<bool> {
+fn check_file(path: &PathBuf) -> Result<bool> {
     let file_uid: UserId = get_file_uid(&path)?;
     let file_gid: GroupId = get_file_gid(&path)?;
     let user_uid: UserId = get_uid();
@@ -58,30 +59,35 @@ pub struct Shell {
     pub argv: Vec<String>,
     pub user: UserId,
     pub status: ExitCode,
+    pub home: PathBuf,
+    pub path: Vec<PathBuf>,
+    pub prompt: String,
+    pub cwd: PathBuf,
 }
 
 impl Shell {
     pub fn new() -> Result<Shell> {
         let user = get_uid();
-        let mut variables: HashMap<String, String> = HashMap::new();
-        variables.insert(
-            String::from("path"),
-            var("PATH").unwrap_or(String::from("/usr/bin")),
-        );
-        variables.insert(String::from("home"), get_home_dir(user)?);
-        variables.insert(String::from("cwd"), get_current_dir()?);
-        variables.insert(String::from("prompt"), Self::get_prompt(user));
+        let path = var("PATH")
+            .unwrap_or(String::from("/usr/bin"))
+            .split(':')
+            .map(PathBuf::from)
+            .collect();
         let argv = args().collect();
         Ok(Shell {
-            variables,
+            variables: HashMap::new(),
             is_login: Self::is_login(&argv),
             argv,
             user,
             status: 0,
+            path,
+            home: get_home_dir(user)?,
+            cwd: get_current_dir()?,
+            prompt: Self::get_prompt(user)
         })
     }
 
-    pub fn interpret(&self, path: &str) -> Result<()> {
+    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
         let fdi = open_file(path, libc::O_RDONLY)?;
         let content = read_file(fdi)?;
         for line in content.lines() {
@@ -95,7 +101,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            write_to_file(1, arg.as_str()).ok();
+            write_to_file(1, arg).ok();
         }
     }
 
@@ -118,42 +124,26 @@ impl Shell {
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
     pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
-        match &self.variables.get("home") {
-            None => return Err(Error::new(ErrorKind::NotFound, "home dir is not found")),
-            Some(home) => {
-                let mut rc_file = std::path::PathBuf::from(home);
-                rc_file.push(rc_name);
-                let rc_file = rc_file.to_str().ok_or(Error::new(
-                    ErrorKind::InvalidData,
-                    "Path is not valid UTF-8",
-                ))?;
-                return if check_file(&rc_file)? {
-                    self.interpret(&rc_file)
-                } else {
-                    Ok(())
-                };
-            }
-        }
+        let mut rc_file = self.home.clone();
+        rc_file.push(rc_name);
+        return if check_file(&rc_file)? {
+            self.interpret(&rc_file)
+        } else {
+            Ok(())
+        };
     }
 
     pub fn interact(&self) -> Result<()> {
-        let prompt = self.get_variable("prompt")?;
+        let prompt = self.prompt.clone();
         write_to_file(1, prompt)?;
         let input = read_file(0)?;
         if input.contains("pwd") {
-            let cwd = self.get_variable("cwd")?;
+            let cwd = self.cwd.clone();
+            let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
+            let cwd = cwd.to_string();
             write_to_file(1, cwd)?;
         }
         Ok(())
-    }
-
-    fn get_variable(&self, name: &str) -> Result<&String> {
-        let error_text = format!("{} variable is not found", name);
-        let error_text = error_text.as_str();
-        self.variables.get(name).ok_or(Error::new(
-            ErrorKind::NotFound,
-            error_text,
-        ))
     }
 }
 
