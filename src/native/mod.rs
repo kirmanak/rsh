@@ -103,11 +103,13 @@ pub fn get_current_dir() -> Result<PathBuf> {
 pub fn read_file(fdi: RawFd) -> Result<String> {
     let mut result = Vec::new();
     let mut buf = vec![0; 256]; // because I can
-    let mut status = unsafe { libc::read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
-    while status > 0 {
+    let mut status;
+    loop {
+        status = unsafe { libc::read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
+        if status <= 0 { break; }
         let slice = &buf[0..status as usize];
         result.extend_from_slice(slice);
-        status = unsafe { libc::read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
+
     }
     if status < 0 {
         Err(Error::Errno(Errno::last()))
