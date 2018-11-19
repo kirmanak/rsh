@@ -1,38 +1,51 @@
 extern crate nix;
 
 use std::collections::HashMap;
-use std::env::args;
-use std::env::var;
+use std::env::{args, var};
 use std::ops::Add;
-use std::path::Path;
+use std::os::unix::process::ExitStatusExt;
+use std::path::PathBuf;
+use std::process::ExitStatus;
 
+use nix::fcntl::{OFlag, open};
 use nix::Result;
 use nix::sys::stat::{Mode, stat};
-use nix::unistd::{Gid, Uid};
+use nix::unistd::{getcwd, gethostname, Gid, read, Uid, write};
 
+use native::get_home_dir;
 use splitter::split_arguments;
-use syscalls::*;
 
 mod splitter;
-mod syscalls;
+mod native;
+
+/// This PATH is used when environmental variable PATH is not set
+const DEFAULT_PATH: PathBuf = PathBuf::from("/usr/bin");
+/// This path is used to find the first script which should be interpreted by the login shell
+const FIRST_LOGIN: PathBuf = PathBuf::from("/etc/.login");
+/// This path is used to find the second script which should be interpreted by the login shell
+const SECOND_LOGIN: PathBuf = PathBuf::from(".cshrc");
+/// This path is used to find the third script which should be interpreted by the login shell
+const THIRD_LOGIN: PathBuf = PathBuf::from(".login");
+/// This path is used to find the script which should be interpreted  by a non-login shell
+const NO_LOGIN: PathBuf = SECOND_LOGIN;
 
 fn main() {
     let shell = Shell::new().unwrap();
     if shell.is_login {
-        shell.interpret("/etc/.login").ok();
-        shell.interpret_rc(".cshrc").ok();
-        shell.interpret_rc(".login").ok();
+        shell.interpret(&FIRST_LOGIN).ok();
+        shell.interpret_rc(&SECOND_LOGIN).ok();
+        shell.interpret_rc(&THIRD_LOGIN).ok();
     } else {
-        shell.interpret_rc(".cshrc").ok();
+        shell.interpret_rc(&NO_LOGIN).ok();
     }
     if shell.argv.len() > 1 {
         shell.argv.iter() // iterating over argv
             .skip(1) // skipping the name of the shell
             .filter(|arg| !arg.starts_with('-')) // filtering options
             .for_each(|path| {
-                if let Err(reason) = shell.interpret(path.as_str()) {
+                if let Err(reason) = shell.interpret(&PathBuf::from(path)) {
                     let error = format!("{}: {}", path.as_str(), reason.to_string().as_str());
-                    exit_error(1, error.as_str());
+                    write(1, error.as_bytes());
                 }
             });
     } else {
@@ -43,7 +56,7 @@ fn main() {
 
 /// Checks whether the file is readable and either is owned by the current user
 /// or the current user's real group ID matches the file's group ID
-fn check_file(path: &Path) -> Result<bool> {
+fn check_file(path: &PathBuf) -> Result<bool> {
     let file_stat = stat(path)?;
     let file_uid = Uid::from_raw(file_stat.st_uid);
     let file_gid = Gid::from_raw(file_stat.st_gid);
@@ -59,34 +72,37 @@ pub struct Shell {
     pub variables: HashMap<String, String>,
     pub is_login: bool,
     pub argv: Vec<String>,
-    pub user: UserId,
-    pub status: ExitCode,
+    pub user: Uid,
+    pub status: ExitStatus,
+    pub cwd: PathBuf,
+    pub path: Vec<PathBuf>,
+    pub prompt: String,
+    pub home: PathBuf,
 }
 
 impl Shell {
     pub fn new() -> Result<Shell> {
-        let user = get_uid();
-        let mut variables: HashMap<String, String> = HashMap::new();
-        variables.insert(
-            String::from("path"),
-            var("PATH").unwrap_or(String::from("/usr/bin")),
-        );
-        variables.insert(String::from("home"), get_home_dir(user)?);
-        variables.insert(String::from("cwd"), get_current_dir()?);
-        variables.insert(String::from("prompt"), Self::get_prompt(user));
         let argv = args().collect();
+        let user = Uid::current();
         Ok(Shell {
-            variables,
+            cwd: getcwd()?,
+            variables: HashMap::new(),
             is_login: Self::is_login(&argv),
             argv,
             user,
-            status: 0,
+            status: ExitStatus::from_raw(0),
+            path: var("PATH").unwrap_or(String::from("/usr/bin")).split(':').map(PathBuf::from).collect(),
+            prompt: Self::get_prompt(user)?,
+            home: PathBuf::from(get_home_dir(user)?),
         })
     }
 
-    pub fn interpret(&self, path: &str) -> Result<()> {
-        let fdi = open_file(path, libc::O_RDONLY)?;
-        let content = read_file(fdi)?;
+    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
+        let fdi = open(path, OFlag::O_RDONLY, Mode::empty())?;
+        let mut buf = [0; 256];
+        let result = read(fdi, &mut buf)?;
+        let buf = &buf[0..result]; // ignore unused space
+        let content = String::from(String::from_utf8_lossy(&buf));
         for line in content.lines() {
             self.execute(line);
         }
@@ -98,7 +114,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            write_to_file(1, arg.as_str()).ok();
+            write(1, arg.as_bytes()).ok();
         }
     }
 
@@ -113,50 +129,38 @@ impl Shell {
     }
 
     /// Gets text for prompt from the system
-    fn get_prompt(user: UserId) -> String {
-        let hostname = get_hostname().unwrap_or("hostname".to_string());
-        let suffix = if user == 0 { "#" } else { "%" };
-        hostname.add(suffix)
+    fn get_prompt(user: Uid) -> Result<String> {
+        let mut buf = [0u8; 256];
+        let hostname = gethostname(&mut buf)?;
+        let hostname = String::from(hostname.to_string_lossy());
+        let suffix = if user.is_root() { "# " } else { "% " };
+        Ok(hostname.add(suffix))
     }
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
-    pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
-        match &self.variables.get("home") {
-            None => return Err(Error::new(ErrorKind::NotFound, "home dir is not found")),
-            Some(home) => {
-                let mut rc_file = std::path::PathBuf::from(home);
-                rc_file.push(rc_name);
-                let rc_file = rc_file.to_str().ok_or(Error::new(
-                    ErrorKind::InvalidData,
-                    "Path is not valid UTF-8",
-                ))?;
-                return if check_file(&rc_file)? {
-                    self.interpret(&rc_file)
-                } else {
-                    Ok(())
-                };
-            }
-        }
+    pub fn interpret_rc(&self, rc_name: &PathBuf) -> Result<()> {
+        let mut rc_file = &self.home;
+        rc_file.push(rc_name);
+        return if check_file(&rc_file)? {
+            self.interpret(&rc_file)
+        } else {
+            Ok(())
+        };
     }
 
     pub fn interact(&self) -> Result<()> {
-        let prompt = self.get_variable("prompt")?;
-        write_to_file(1, prompt)?;
-        let input = read_file(0)?;
+        let prompt = self.prompt.as_bytes();
+        let mut buf = [0; 256];
+        write(1, prompt)?;
+        let result = read(0, &mut buf)?;
+        let buf = &buf[0..result];
+        let input = String::from(String::from_utf8_lossy(&buf));
         if input.contains("pwd") {
-            let cwd = self.get_variable("cwd")?;
-            write_to_file(1, cwd)?;
+            let cwd = &self.cwd;
+            let cwd = String::from(cwd.to_string_lossy()).as_bytes();
+            write(1, cwd)?;
         }
         Ok(())
-    }
-
-    fn get_variable(&self, name: &str) -> Result<&String> {
-        let error_text = format!("{} variable is not found", name);
-        let error_text = error_text.as_str();
-        self.variables.get(name).ok_or(Error::new(
-            ErrorKind::NotFound,
-            error_text,
-        ))
     }
 }
 
