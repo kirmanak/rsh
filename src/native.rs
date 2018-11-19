@@ -15,21 +15,13 @@ pub fn get_home_dir(uid: Uid) -> Result<String> {
         let dir: *mut c_char = unsafe { (*passwd_ptr).pw_dir };
         if !dir.is_null() {
             let string = unsafe { copy_string(dir) };
-            let string = lossy_string(string);
+            let string = String::from(string.to_string_lossy());
             Ok(string)
         } else {
             Err(Error::UnsupportedOperation)
         }
     } else {
         Err(Error::last())
-    }
-}
-
-/// Creates a Rust string from a C string replacing invalid UTF-8 characters with U+FFFD
-pub fn lossy_string(native: &CStr) -> String {
-    match native.to_string_lossy() {
-        Cow::Borrowed(text) => String::from(text),
-        Cow::Owned(text) => text
     }
 }
 
