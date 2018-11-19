@@ -139,7 +139,7 @@ impl Shell {
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
     pub fn interpret_rc(&self, rc_name: &PathBuf) -> Result<()> {
-        let mut rc_file = &self.home;
+        let mut rc_file = self.home.clone();
         rc_file.push(rc_name);
         return if check_file(&rc_file)? {
             self.interpret(&rc_file)
@@ -156,8 +156,9 @@ impl Shell {
         let buf = &buf[0..result];
         let input = String::from(String::from_utf8_lossy(&buf));
         if input.contains("pwd") {
-            let cwd = &self.cwd;
-            let cwd = String::from(cwd.to_string_lossy()).as_bytes();
+            let cwd = self.cwd.to_string_lossy();
+            let cwd = String::from(cwd);
+            let cwd = cwd.as_bytes();
             write(1, cwd)?;
         }
         Ok(())
