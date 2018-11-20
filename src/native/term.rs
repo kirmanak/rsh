@@ -4,7 +4,7 @@ use self::libc::{termios, tcgetattr, tcsetattr, c_int};
 
 use std::os::unix::io::RawFd;
 
-use ::{Result, Error};
+use {Result, Error};
 
 pub fn setup_tty(fd: RawFd, on: i32) -> Result<()> {
     let configuration = unsafe { get_attr(fd)? };
