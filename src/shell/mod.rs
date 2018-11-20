@@ -8,6 +8,7 @@ use self::splitter::split_arguments;
 
 mod splitter;
 
+/// The structure represents the state of a shell. First of all, it stores variables.
 pub struct Shell {
     pub variables: HashMap<String, String>,
     pub is_login: bool,
@@ -21,7 +22,10 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new() -> Result<Shell> {
+    /// Constructs a new shell.
+    /// It performs many syscalls to initialize all variables.
+    /// Since a few of these calls can fail, the function returns Result.
+    pub fn new() -> Result<Self> {
         let user = get_uid();
         let path = var("PATH")
             .unwrap_or(String::from("/usr/bin"))
@@ -42,6 +46,9 @@ impl Shell {
         })
     }
 
+    /// The function opens a file on the provided path if any and tries to interpret this file.
+    /// All changes in shell variables are saved! 
+    /// It is recommended to call this function in a clone of the current shell. 
     pub fn interpret(&self, path: &PathBuf) -> Result<()> {
         let fdi = open_file(path, libc::O_RDONLY)?;
         let content = read_file(fdi)?;
@@ -90,6 +97,7 @@ impl Shell {
         };
     }
 
+    /// Starts interactive shell which prints prompt and waits for user's input.
     pub fn interact(&self) -> Result<()> {
         let prompt = self.prompt.as_str();
         write_to_file(1, prompt)?;
