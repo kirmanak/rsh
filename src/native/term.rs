@@ -12,6 +12,7 @@ pub fn setup_tty(fd: RawFd, on: i32) -> Result<()> {
     Ok(())
 }
 
+/// Gets the current state of termios attributes on the provided file
 unsafe fn get_attr(fd: RawFd) -> Result<termios> {
     let mut buf: termios = std::mem::zeroed();
     let result: c_int = tcgetattr(fd, &mut buf);

@@ -4,6 +4,7 @@ use self::libc::{c_int, strerror, c_char};
 
 use {write_exit, copy_string};
 
+/// Wraps errno state and gets the description from the system
 #[derive(Debug)]
 pub struct Errno {
     code: c_int,
@@ -21,6 +22,7 @@ unsafe fn errno() -> *const c_int {
 }
 
 impl Errno {
+    /// Wraps the current state of errno
     pub fn last() -> Self {
         let errno_ptr: *const c_int = unsafe { errno() };
         if errno_ptr.is_null() {

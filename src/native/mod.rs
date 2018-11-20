@@ -41,12 +41,16 @@ pub fn get_hostname() -> Result<String> {
     }
 }
 
+/// Opens the file which is located on the provided path with the provided flags.
+/// More information about the flags is in open(2). 
+/// These constants are available in libc crate.
 pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
     let path = native_path(path)?;
     let status: c_int = unsafe { open(path.into_raw() as *const c_char, flags) };
     errno!(status, status)
 }
 
+//// Writes text to the file and returns non-negative number in the case of success.
 pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
     let len = text.len();
     let text = native_string(text)?;
@@ -54,6 +58,7 @@ pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
     errno!(status, status)
 }
 
+/// Gets current working dir from the system
 pub fn get_current_dir() -> Result<PathBuf> {
     let mut buf = vec![0; libc::PATH_MAX as usize];
     let name_ptr = unsafe { getcwd(buf.as_mut_ptr() as *mut c_char, buf.capacity()) };
@@ -69,6 +74,7 @@ pub fn get_current_dir() -> Result<PathBuf> {
     }
 }
 
+/// Reads file contents to a String
 pub fn read_file(fdi: RawFd) -> Result<String> {
     let mut result = Vec::new();
     let mut buf = vec![0; 256]; // because I can
@@ -91,6 +97,7 @@ pub fn read_file(fdi: RawFd) -> Result<String> {
 
 pub type ExitCode = i32;
 
+/// Writes the provided text to stderr and exits with the provided exit code.
 pub fn write_exit(exit_code: ExitCode, text: &str) -> ! {
     write_to_file(2, text).ok();
     exit(exit_code);
@@ -105,10 +112,12 @@ pub unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
     read_buf(buf)
 }
 
+/// Wraps Vec<u8> to String 
 fn read_buf(buf: Vec<u8>) -> Result<String> {
     String::from_utf8(buf).map_err(|_| Error::InvalidUnicode)
 }
 
+/// Wraps string slice to CString
 fn native_string(string: &str) -> Result<CString> {
     CString::new(string).map_err(|_| Error::InvalidCString)
 }
@@ -119,8 +128,10 @@ pub fn native_path(path: &PathBuf) -> Result<CString> {
     native_string(path)
 }
 
+/// Forces usage of rsh::native::Error in Results
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Represents all possible errors in this program.
 #[derive(Debug)]
 pub enum Error {
     InvalidCString,
