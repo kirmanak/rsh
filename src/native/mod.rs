@@ -77,7 +77,7 @@ pub fn get_current_dir() -> Result<PathBuf> {
 /// Reads file contents to a String
 pub fn read_file(fdi: RawFd) -> Result<String> {
     let mut result = Vec::new();
-    let mut buf = vec![0; 256]; // because I can
+    let mut buf = vec![0; 4096]; // like in csh
     let mut status;
     loop {
         status = unsafe { read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
