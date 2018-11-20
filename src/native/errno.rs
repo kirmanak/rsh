@@ -1,7 +1,6 @@
 extern crate libc;
 
 use self::libc::{c_int, strerror, c_char};
-use self::libc::unix::solaris::*;
 
 #[derive(Debug)]
 pub struct Errno {
@@ -9,15 +8,19 @@ pub struct Errno {
     text: String,
 }
 
+#[cfg(target_os="solaris")]
+unsafe fn errno() -> *const c_int {
+    self::libc::___errno()
+}
+
+#[cfg(not(target_os="solaris"))]
+unsafe fn errno() -> *const c_int {
+    self::libc::__errno_location()
+}
+
 impl Errno {
     pub fn last() -> Self {
-        let errno_ptr: *const c_int = unsafe {
-            if cfg!(target_os = "solaris") {
-                self::libc::___errno()
-            } else {
-                self::libc::__errno_location()
-            }
-        };
+        let errno_ptr: *const c_int = unsafe { errno() };
         if errno_ptr.is_null() {
             ::write_exit(1, "errno location is unknown");
         } else {
