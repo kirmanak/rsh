@@ -2,6 +2,8 @@ extern crate libc;
 
 use self::libc::{c_int, strerror, c_char};
 
+use {write_exit, copy_string};
+
 #[derive(Debug)]
 pub struct Errno {
     code: c_int,
@@ -22,17 +24,17 @@ impl Errno {
     pub fn last() -> Self {
         let errno_ptr: *const c_int = unsafe { errno() };
         if errno_ptr.is_null() {
-            ::write_exit(1, "errno location is unknown");
+            write_exit(1, "errno location is unknown");
         } else {
             let code: c_int = unsafe { *errno_ptr };
             let text: *const c_char = unsafe { strerror(code) };
             if text.is_null() {
-                ::write_exit(2, "errno code is unknown");
+                write_exit(2, "errno code is unknown");
             } else {
-                if let Ok(text) = unsafe { ::copy_string(text) } {
+                if let Ok(text) = unsafe { copy_string(text) } {
                     Errno { code, text }
                 } else {
-                    ::write_exit(3, "errno string is incorrect C string");
+                    write_exit(3, "errno string is incorrect C string");
                 }
             }
         }

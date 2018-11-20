@@ -131,6 +131,6 @@ pub enum Error {
 
 impl Error {
     fn from_errno() -> Self {
-        ::Error::Errno(Errno::last())
+        Error::Errno(Errno::last())
     }
 }
