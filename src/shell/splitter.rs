@@ -6,7 +6,19 @@
 /// assert_eq!(splitted, vec!["echo", "first argument", "second argument"]);
 /// ```
 pub fn split_arguments(line: &str) -> Vec<&str> {
-    line.split_whitespace().collect()
+    let mut result = Vec::new();
+    let mut start = 0;
+    for (number, symbol) in line.chars().enumerate() {
+        match symbol {
+            ' ' => {
+                result.push(&line[start..number]);
+                start = number + 1;
+            },
+            _ => continue
+        }
+    } 
+    result.push(&line[start..]);
+    result
 }
 
 #[cfg(test)]
