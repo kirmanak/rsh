@@ -6,7 +6,7 @@ use std::os::unix::io::RawFd;
 
 use {Result, Error};
 
-pub fn setup_tty(fd: RawFd, on: i32) -> Result<()> {
+pub fn setup_tty(fd: RawFd, is_on: bool) -> Result<()> {
     let configuration = unsafe { get_attr(fd)? };
 
     Ok(())
