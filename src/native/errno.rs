@@ -1,6 +1,7 @@
 extern crate libc;
 
 use self::libc::{c_int, strerror, c_char};
+use self::libc::unix::solaris::*;
 
 #[derive(Debug)]
 pub struct Errno {
