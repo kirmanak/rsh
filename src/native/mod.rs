@@ -5,8 +5,13 @@ use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::exit;
 
-use self::libc::{__errno_location, c_char, c_int, c_void, getcwd, gethostname, getpwuid, open, passwd, read,
-                 ssize_t, stat, strerror, strlen, write};
+use self::errno::Errno;
+
+mod errno;
+pub mod file_stat;
+pub mod users;
+
+use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write};
 
 /// Gets the name of the host using gethostname() from libc.
 /// Returns None in case of error in gethostname() or in String::from_utf8().
@@ -24,35 +29,6 @@ pub fn get_hostname() -> Result<String> {
     }
 }
 
-pub type UserId = u32;
-pub type GroupId = u32;
-
-/// Gets Uid of the current user.
-pub fn get_uid() -> UserId {
-    unsafe { libc::getuid() }
-}
-
-/// Gets gid of the current user.
-pub fn get_gid() -> GroupId {
-    unsafe { libc::getgid() }
-}
-
-/// Gets user's home directory from the corresponding record in passwd.
-pub fn get_home_dir(uid: UserId) -> Result<PathBuf> {
-    let entry: *const passwd = unsafe { getpwuid(uid) };
-    if entry.is_null() {
-        Err(Error::from_errno())
-    } else {
-        let dir: *const c_char = unsafe { (*entry).pw_dir };
-        if dir.is_null() {
-            Err(Error::NotFound)
-        } else {
-            let path = unsafe { copy_string(dir)? };
-            Ok(PathBuf::from(path))
-        }
-    }
-}
-
 pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
     let path = native_path(path)?;
     let status: c_int = unsafe { open(path.into_raw() as *const c_char, flags) };
@@ -61,23 +37,6 @@ pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
     } else {
         Ok(status)
     }
-}
-
-pub fn get_file_uid(path: &PathBuf) -> Result<UserId> {
-    let stat = unsafe { stat_file(path)? };
-    Ok(stat.st_uid)
-}
-
-pub fn get_file_gid(path: &PathBuf) -> Result<GroupId> {
-    let stat = unsafe { stat_file(path)? };
-    Ok(stat.st_gid)
-}
-
-pub type FileMode = u32;
-
-pub fn get_file_mode(path: &PathBuf) -> Result<FileMode> {
-    let stat: libc::stat = unsafe { stat_file(path)? };
-    Ok(stat.st_mode)
 }
 
 pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
@@ -112,7 +71,9 @@ pub fn read_file(fdi: RawFd) -> Result<String> {
     let mut status;
     loop {
         status = unsafe { read(fdi, buf.as_mut_ptr() as *mut c_void, buf.capacity()) };
-        if status <= 0 { break; }
+        if status <= 0 {
+            break;
+        }
         let slice = &buf[0..status as usize];
         result.extend_from_slice(slice);
 
@@ -131,20 +92,9 @@ pub fn write_exit(exit_code: ExitCode, text: &str) -> ! {
     exit(exit_code);
 }
 
-unsafe fn stat_file(path: &PathBuf) -> Result<stat> {
-    let path = native_path(path)?;
-    let mut buf: stat = std::mem::zeroed();
-    let status: c_int = stat(path.into_raw() as *const c_char, &mut buf);
-    if status < 0 {
-        Err(Error::Errno(Errno::last()))
-    } else {
-        Ok(buf)
-    }
-}
-
 /// Makes a copy of a string which was allocated by the system.
 /// Otherwise Rust tries to manage the memory of the string which leads to segfault.
-unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
+pub unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
     let len = strlen(ptr);
     let mut buf = vec![0; len];
     libc::strcpy(buf.as_mut_ptr() as *mut c_char, ptr);
@@ -160,7 +110,7 @@ fn native_string(string: &str) -> Result<CString> {
 }
 
 /// Creates a null terminated string out of an PathBuf instance
-fn native_path(path: &PathBuf) -> Result<CString> {
+pub fn native_path(path: &PathBuf) -> Result<CString> {
     let path = path.to_str().ok_or(Error::InvalidUnicode)?;
     native_string(path)
 }
@@ -172,38 +122,11 @@ pub enum Error {
     InvalidCString,
     InvalidUnicode,
     NotFound,
-    Errno(Errno)
+    Errno(Errno),
 }
 
 impl Error {
     fn from_errno() -> Self {
         ::Error::Errno(Errno::last())
-    }
-}
-
-#[derive(Debug)]
-pub struct Errno {
-    code: c_int,
-    text: String,
-}
-
-impl Errno {
-    pub fn last() -> Self {
-        let errno_ptr: *const c_int = unsafe { __errno_location() };
-        if errno_ptr.is_null() {
-            write_exit(1, "errno location is unknown");
-        } else {
-            let code: c_int = unsafe { *errno_ptr };
-            let text: *const c_char = unsafe { strerror(code) };
-            if text.is_null() {
-                write_exit(2, "errno code is unknown");
-            } else {
-                if let Ok(text) = unsafe { copy_string(text) } {
-                    Errno { code, text }
-                } else {
-                    write_exit(3, "errno string is incorrect C string");
-                }
-            }
-        }
     }
 }

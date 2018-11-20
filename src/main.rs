@@ -3,6 +3,8 @@ use std::env::{args, var};
 use std::path::PathBuf;
 
 use native::*;
+use native::file_stat::*;
+use native::users::*;
 use splitter::split_arguments;
 
 mod splitter;
