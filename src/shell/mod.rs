@@ -38,7 +38,7 @@ impl Shell {
             path,
             home: get_home_dir(user)?,
             cwd: get_current_dir()?,
-            prompt: Self::get_prompt(user)
+            prompt: Self::get_prompt(user),
         })
     }
 
@@ -63,8 +63,8 @@ impl Shell {
     /// Checks whether we're the login shell or not
     fn is_login(args: &Vec<String>) -> bool {
         match args.len() {
-             // first argument MUST be present
-            0 => write_exit(7,  "Something went REALLY wrong"),
+            // first argument MUST be present
+            0 => write_exit(7, "Something went REALLY wrong"),
             1 => args[0].starts_with('-'), // we had no arguments and started as -<something>,
             2 => args[1].eq(&"-l".to_string()), // we had only one argument - "-l",
             _ => false,

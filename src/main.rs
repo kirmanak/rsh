@@ -36,7 +36,7 @@ fn main() {
             }
         }
     } else {
-        write_exit(4,"Failed to initialize the shell");
+        write_exit(4, "Failed to initialize the shell");
     }
 }
 

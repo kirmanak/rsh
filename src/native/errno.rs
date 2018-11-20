@@ -8,12 +8,12 @@ pub struct Errno {
     text: String,
 }
 
-#[cfg(target_os="solaris")]
+#[cfg(target_os = "solaris")]
 unsafe fn errno() -> *const c_int {
     self::libc::___errno()
 }
 
-#[cfg(not(target_os="solaris"))]
+#[cfg(not(target_os = "solaris"))]
 unsafe fn errno() -> *const c_int {
     self::libc::__errno_location()
 }

@@ -13,10 +13,10 @@ pub fn split_arguments(line: &str) -> Vec<&str> {
             ' ' => {
                 result.push(&line[start..number]);
                 start = number + 1;
-            },
-            _ => continue
+            }
+            _ => continue,
         }
-    } 
+    }
     result.push(&line[start..]);
     result
 }
