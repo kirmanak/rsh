@@ -1,5 +1,16 @@
 extern crate libc;
 
+#[macro_export]
+macro_rules! errno {
+    ($status:expr, $result:expr) => {
+        if $status < 0 {
+            Err(Error::from_errno())
+        } else {
+            Ok($result)
+        }
+    };
+}
+
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -10,6 +21,7 @@ use self::errno::Errno;
 mod errno;
 pub mod file_stat;
 pub mod users;
+pub mod term;
 
 use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write};
 
@@ -32,22 +44,14 @@ pub fn get_hostname() -> Result<String> {
 pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
     let path = native_path(path)?;
     let status: c_int = unsafe { open(path.into_raw() as *const c_char, flags) };
-    if status < 0 {
-        Err(Error::Errno(Errno::last()))
-    } else {
-        Ok(status)
-    }
+    errno!(status, status)
 }
 
 pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
     let len = text.len();
     let text = native_string(text)?;
     let status: ssize_t = unsafe { write(fd, text.into_raw() as *const c_void, len) };
-    if status < 0 {
-        Err(Error::from_errno())
-    } else {
-        Ok(status)
-    }
+    errno!(status, status)
 }
 
 pub fn get_current_dir() -> Result<PathBuf> {
