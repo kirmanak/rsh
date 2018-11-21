@@ -63,7 +63,7 @@ impl Shell {
         let arguments = split_arguments(line);
         for arg in arguments {
             let arg = format!("{}\n", arg);
-            write_to_file(1, arg.as_str()).ok();
+            write_to_file(1, &arg).ok();
         }
     }
 
@@ -98,7 +98,7 @@ impl Shell {
 
     /// Starts interactive shell which prints prompt and waits for user's input.
     pub fn interact(&mut self) -> Result<()> {
-        let prompt = self.prompt.as_str();
+        let prompt = &self.prompt;
         loop {
             write_to_file(1, prompt)?;
             let input = read_line(0)?;
@@ -108,7 +108,7 @@ impl Shell {
                     let cwd = self.cwd.clone();
                     let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
                     let cwd = format!("{}\n", cwd);
-                    write_to_file(1, cwd.as_str())?;
+                    write_to_file(1, &cwd)?;
                 }
                 _ => {
                     write_to_file(1, "Command parsing error\n")?;
