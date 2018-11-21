@@ -10,33 +10,35 @@ pub mod native;
 pub mod shell;
 
 fn main() {
-    if let Ok(mut shell) = Shell::new() {
-        if shell.is_login {
-            shell.interpret(&PathBuf::from("/etc/.login")).ok();
-            shell.interpret_rc(".cshrc").ok();
-            shell.interpret_rc(".login").ok();
-        } else {
-            shell.interpret_rc(".cshrc").ok();
-        }
-        if shell.argv.len() > 1 {
-            shell.argv.iter() // iterating over argv
+    match Shell::new() {
+        Err(reason) => write_exit(4, &format!("{}", reason)),
+        Ok(mut shell) => {
+            if shell.is_login {
+                shell.interpret(&PathBuf::from("/etc/.login")).ok();
+                shell.interpret_rc(".cshrc").ok();
+                shell.interpret_rc(".login").ok();
+            } else {
+                shell.interpret_rc(".cshrc").ok();
+            }
+            if shell.argv.len() > 1 {
+                shell.argv.iter() // iterating over argv
                 .skip(1) // skipping the name of the shell
                 .filter(|arg| !arg.starts_with('-')) // filtering options
                 .map(PathBuf::from)
                 .for_each(|path| {
                     if let Err(reason) = shell.interpret(&path) {
                         let error = format!("{:?}: {:?}\n", path, reason);
-                        write_exit(5, error.as_str());
+                        write_exit(5, &error);
                     }
                 });
-        } else {
-            if let Err(reason) = shell.interact() {
-                let error = format!("{:?}\n", reason);
-                write_exit(6, error.as_str());
+            } else {
+                if let Err(reason) = shell.interact() {
+                    let error = format!("{:?}\n", reason);
+                    write_exit(6, &error);
+                }
             }
+            shell.interpret_rc(".logout").ok();
         }
-    } else {
-        write_exit(4, "Failed to initialize the shell");
     }
 }
 
