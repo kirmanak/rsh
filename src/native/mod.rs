@@ -42,7 +42,7 @@ pub fn get_hostname() -> Result<String> {
 }
 
 /// Opens the file which is located on the provided path with the provided flags.
-/// More information about the flags is in open(2). 
+/// More information about the flags is in open(2).
 /// These constants are available in libc crate.
 pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
     let path = native_path(path)?;
@@ -95,6 +95,26 @@ pub fn read_file(fdi: RawFd) -> Result<String> {
     }
 }
 
+/// Reads a line (chars till '\n' or EOF) from the provided file
+pub fn read_line(fdi: RawFd) -> Result<String> {
+    let mut result = Vec::new();
+    let mut buf = [0; 1];
+    let mut status;
+    loop {
+        status = unsafe { read(fdi, buf.as_mut_ptr() as *mut c_void, 1) };
+        let c = buf[0];
+        if status <= 0 || c == b'\n' {
+            break;
+        }
+        result.push(c);
+    }
+    if status < 0 {
+        Err(Error::from_errno())
+    } else {
+        read_buf(result)
+    }
+}
+
 pub type ExitCode = i32;
 
 /// Writes the provided text to stderr and exits with the provided exit code.
@@ -112,7 +132,7 @@ pub unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
     read_buf(buf)
 }
 
-/// Wraps Vec<u8> to String 
+/// Wraps Vec<u8> to String
 fn read_buf(buf: Vec<u8>) -> Result<String> {
     String::from_utf8(buf).map_err(|_| Error::InvalidUnicode)
 }

@@ -47,8 +47,8 @@ impl Shell {
     }
 
     /// The function opens a file on the provided path if any and tries to interpret this file.
-    /// All changes in shell variables are saved! 
-    /// It is recommended to call this function in a clone of the current shell. 
+    /// All changes in shell variables are saved!
+    /// It is recommended to call this function in a clone of the current shell.
     pub fn interpret(&self, path: &PathBuf) -> Result<()> {
         let fdi = open_file(path, libc::O_RDONLY)?;
         let content = read_file(fdi)?;
@@ -97,14 +97,24 @@ impl Shell {
     }
 
     /// Starts interactive shell which prints prompt and waits for user's input.
-    pub fn interact(&self) -> Result<()> {
+    pub fn interact(&mut self) -> Result<()> {
         let prompt = self.prompt.as_str();
-        write_to_file(1, prompt)?;
-        let input = read_file(0)?;
-        if input.contains("pwd") {
-            let cwd = self.cwd.clone();
-            let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-            write_to_file(1, cwd)?;
+        loop {
+            write_to_file(1, prompt)?;
+            let input = read_line(0)?;
+            match input.as_str() {
+                "exit" => break,
+                "pwd" => {
+                    let cwd = self.cwd.clone();
+                    let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
+                    let cwd = format!("{}\n", cwd);
+                    write_to_file(1, cwd.as_str())?;
+                }
+                _ => {
+                    write_to_file(1, "Command parsing error\n")?;
+                    self.status = 1;
+                }
+            }
         }
         Ok(())
     }

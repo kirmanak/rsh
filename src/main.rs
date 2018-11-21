@@ -10,7 +10,7 @@ pub mod native;
 pub mod shell;
 
 fn main() {
-    if let Ok(shell) = Shell::new() {
+    if let Ok(mut shell) = Shell::new() {
         if shell.is_login {
             shell.interpret(&PathBuf::from("/etc/.login")).ok();
             shell.interpret_rc(".cshrc").ok();
