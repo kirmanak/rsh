@@ -80,10 +80,9 @@ impl Shell {
 
     /// Gets text for prompt from the system
     fn get_prompt(user: UserId) -> String {
-        let mut hostname = get_hostname().unwrap_or(String::from("hostname"));
-        let suffix = if user == 0 { '#' } else { '%' };
-        hostname.push(suffix);
-        hostname
+        let hostname = get_hostname().unwrap_or(String::from("hostname"));
+        let suffix = if user == 0 { "#" } else { "%" };
+        format!("{}{} ", hostname, suffix)
     }
 
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
