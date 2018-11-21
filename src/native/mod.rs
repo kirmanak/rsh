@@ -11,6 +11,7 @@ macro_rules! errno {
     };
 }
 
+use std::fmt::{Formatter, Display};
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -163,5 +164,16 @@ pub enum Error {
 impl Error {
     fn from_errno() -> Self {
         Error::Errno(Errno::last())
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Error::InvalidCString => write!(formatter, "Fail to produce valid C string"),
+            Error::InvalidUnicode => write!(formatter, "Fail to produce valid Unicode string"),
+            Error::NotFound => write!(formatter, "Value was not found"),
+            Error::Errno(reason) => write!(formatter, "{}", reason),
+        }
     }
 }

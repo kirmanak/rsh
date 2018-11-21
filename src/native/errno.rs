@@ -1,5 +1,6 @@
 extern crate libc;
 
+use std::fmt::{Formatter, Display};
 use self::libc::{c_int, strerror, c_char};
 
 use {write_exit, copy_string};
@@ -40,5 +41,11 @@ impl Errno {
                 }
             }
         }
+    }
+}
+
+impl Display for Errno {
+    fn fmt(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        write!(formatter, "{}", &self.text)
     }
 }
