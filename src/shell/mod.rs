@@ -42,29 +42,41 @@ impl Shell {
             path,
             home: get_home_dir(user)?,
             cwd: get_current_dir()?,
-            prompt: Self::get_prompt(user),
+            prompt: get_prompt(user),
         })
     }
 
     /// The function opens a file on the provided path if any and tries to interpret this file.
     /// All changes in shell variables are saved!
     /// It is recommended to call this function in a clone of the current shell.
-    pub fn interpret(&self, path: &PathBuf) -> Result<()> {
+    pub fn interpret(&mut self, path: &PathBuf) -> Result<()> {
         let fdi = open_file(path, libc::O_RDONLY)?;
         let content = read_file(fdi)?;
         for line in content.lines() {
-            self.execute(line);
+            self.execute(line)?;
         }
         Ok(())
     }
 
-    /// Parses the command and executes it
-    fn execute(&self, line: &str) {
+    /// Parses the command and executes it.
+    /// Returns true if reading should be stopped.
+    fn execute(&mut self, line: &str) -> Result<bool> {
         let arguments = split_arguments(line);
         for arg in arguments {
-            let arg = format!("{}\n", arg);
-            write_to_file(1, &arg).ok();
+            match arg {
+                "exit" => return Ok(true),
+                "pwd" => {
+                    let cwd = self.cwd.clone();
+                    let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
+                    write_to_file(1, &format!("{}\n", cwd))?;
+                }
+                _ => {
+                    write_to_file(1, "Command parsing error\n")?;
+                    self.status = 1;
+                }
+            }
         }
+        Ok(false)
     }
 
     /// Checks whether we're the login shell or not
@@ -78,15 +90,8 @@ impl Shell {
         }
     }
 
-    /// Gets text for prompt from the system
-    fn get_prompt(user: UserId) -> String {
-        let hostname = get_hostname().unwrap_or(String::from("hostname"));
-        let suffix = if user == 0 { "#" } else { "%" };
-        format!("{}{} ", hostname, suffix)
-    }
-
     /// Checks whether the provided rc file should be interpreted or not. If so, it interprets it.
-    pub fn interpret_rc(&self, rc_name: &str) -> Result<()> {
+    pub fn interpret_rc(&mut self, rc_name: &str) -> Result<()> {
         let mut rc_file = self.home.clone();
         rc_file.push(rc_name);
         return if check_file(&rc_file)? {
@@ -98,25 +103,64 @@ impl Shell {
 
     /// Starts interactive shell which prints prompt and waits for user's input.
     pub fn interact(&mut self) -> Result<()> {
-        let prompt = &self.prompt;
         loop {
-            write_to_file(1, prompt)?;
+            write_to_file(1, &self.prompt)?;
             let input = read_line(0)?;
-            match input.as_str() {
-                "exit" => break,
-                "pwd" => {
-                    let cwd = self.cwd.clone();
-                    let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-                    write_to_file(1, &format!("{}\n", cwd))?;
-                }
-                _ => {
-                    write_to_file(1, "Command parsing error\n")?;
-                    self.status = 1;
-                }
+            if self.execute(&input)? {
+                break;
             }
         }
         Ok(())
     }
+
+
+    /// Reads initial scripts
+    pub fn on_start(&mut self) -> Result<()> {
+        if self.is_login {
+            self.interpret(&PathBuf::from("/etc/.login"))?;
+            self.interpret_rc(".cshrc")?;
+            self.interpret_rc(".login")?;
+        } else {
+            self.interpret_rc(".cshrc")?;
+        }
+        Ok(())
+    }
+
+    /// Iterates over arguments given to the shell
+    pub fn handle_arguments(&mut self) -> Result<()> {
+        let args: Vec<PathBuf> = self.argv
+            .iter()
+            .skip(1)
+            .filter(|arg| !arg.starts_with('-'))
+            .map(PathBuf::from)
+            .collect();
+        for arg in &args {
+            self.interpret(&arg)?;
+        }
+        Ok(())
+    }
+}
+
+/// Gets text for prompt from the system
+fn get_prompt(user: UserId) -> String {
+    let hostname = get_hostname().unwrap_or(String::from("hostname"));
+    let suffix = if user == 0 { "#" } else { "%" };
+    format!("{}{} ", hostname, suffix)
+}
+
+/// Checks whether the file is readable and either is owned by the current user
+/// or the current user's real group ID matches the file's group ID
+fn check_file(path: &PathBuf) -> Result<bool> {
+    let file_uid: UserId = get_file_uid(&path)?;
+    let file_gid: GroupId = get_file_gid(&path)?;
+    let user_uid: UserId = get_uid();
+    let user_gid: GroupId = get_gid();
+    let mode = get_file_mode(&path)?;
+    let can_user_read = mode & 0o400 != 0;
+    let can_group_read = mode & 0o040 != 0;
+    Ok(
+        (user_uid == file_uid && can_user_read) || (user_gid == file_gid && can_group_read),
+    )
 }
 
 #[cfg(test)]
