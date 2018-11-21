@@ -107,8 +107,7 @@ impl Shell {
                 "pwd" => {
                     let cwd = self.cwd.clone();
                     let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-                    let cwd = format!("{}\n", cwd);
-                    write_to_file(1, &cwd)?;
+                    write_to_file(1, &format!("{}\n", cwd))?;
                 }
                 _ => {
                     write_to_file(1, "Command parsing error\n")?;
