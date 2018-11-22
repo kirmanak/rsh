@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
 use std::env::{args, var};
+use std::ffi::OsString;
 
-use ::*;
+use super::*;
 
 use self::splitter::split_arguments;
 
@@ -53,14 +54,14 @@ impl Shell {
         let fdi = open_file(path, libc::O_RDONLY)?;
         let content = read_file(fdi)?;
         for line in content.lines() {
-            self.execute(line)?;
+            self.parse(line)?;
         }
         Ok(())
     }
 
     /// Parses the command and executes it.
     /// Returns true if reading should be stopped.
-    fn execute(&mut self, line: &str) -> Result<bool> {
+    fn parse(&mut self, line: &str) -> Result<bool> {
         let arguments = split_arguments(line);
         for arg in arguments {
             match arg {
@@ -71,12 +72,34 @@ impl Shell {
                     write_to_file(1, &format!("{}\n", cwd))?;
                 }
                 _ => {
-                    write_to_file(1, "Command parsing error\n")?;
-                    self.status = 1;
+                    let path = self.find_path(arg).ok_or(Error::NotFound)?;
+                    let name = path.to_str().ok_or(Error::InvalidUnicode)?;
+                    execute(&path, &vec![name], &Vec::new())?;
                 }
             }
         }
         Ok(false)
+    }
+
+    /// Iterates over the PATH variable contents looking for the program
+    fn find_path(&self, name: &str) -> Option<PathBuf> {
+        if name.contains('/') {
+            Some(PathBuf::from(name))
+        } else {
+            let name = OsString::from(name);
+            for path in &self.path {
+                if let Ok(dir) = path.read_dir() {
+                    for entry in dir {
+                        if let Ok(entry) = entry {
+                            if entry.file_name() == name {
+                                return Some(entry.path());
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
     }
 
     /// Checks whether we're the login shell or not
@@ -106,13 +129,12 @@ impl Shell {
         loop {
             write_to_file(1, &self.prompt)?;
             let input = read_line(0)?;
-            if self.execute(&input)? {
+            if self.parse(&input)? {
                 break;
             }
         }
         Ok(())
     }
-
 
     /// Reads initial scripts
     pub fn on_start(&mut self) -> Result<()> {

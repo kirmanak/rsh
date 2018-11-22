@@ -16,6 +16,7 @@ use std::ffi::CString;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::exit;
+use std::ptr::null;
 
 use self::errno::Errno;
 
@@ -24,7 +25,8 @@ pub mod file_stat;
 pub mod users;
 pub mod term;
 
-use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write};
+use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write,
+                 execve};
 
 /// Gets the name of the host using gethostname() from libc.
 /// Returns None in case of error in gethostname() or in String::from_utf8().
@@ -147,6 +149,26 @@ fn native_string(string: &str) -> Result<CString> {
 pub fn native_path(path: &PathBuf) -> Result<CString> {
     let path = path.to_str().ok_or(Error::InvalidUnicode)?;
     native_string(path)
+}
+
+pub fn execute(path: &PathBuf, args: &Vec<&str>, env: &Vec<&str>) -> Result<()> {
+    let path = native_path(&path)?;
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    for arg in args {
+        let native = native_string(arg)?;
+        argv.push(native.as_ptr());
+    }
+    argv.push(null());
+    let mut envp = Vec::with_capacity(env.len() + 1);
+    for en in env {
+        let native = native_string(en)?;
+        envp.push(native.as_ptr());
+    }
+    envp.push(null());
+    unsafe { 
+        execve(path.as_ptr(), argv.as_ptr(), envp.as_ptr()); 
+    }
+    Ok(())
 }
 
 /// Forces usage of rsh::native::Error in Results

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use native::*;
 use native::file_stat::*;
 use native::users::*;
