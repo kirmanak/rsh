@@ -63,22 +63,32 @@ impl Shell {
     /// Returns true if reading should be stopped.
     fn parse(&mut self, line: &str) -> Result<bool> {
         let arguments = split_arguments(line);
-        for arg in arguments {
-            match arg {
-                "exit" => return Ok(true),
-                "pwd" => {
-                    let cwd = self.cwd.clone();
-                    let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-                    write_to_file(1, &format!("{}\n", cwd))?;
-                }
-                _ => {
-                    let path = self.find_path(arg).ok_or(Error::NotFound)?;
-                    let name = path.to_str().ok_or(Error::InvalidUnicode)?;
-                    self.status = execute(&path, &vec![name], &Vec::new())?;
+        match arguments.get(0) {
+            None => Ok(false),
+            Some(program) => {
+                let program = *program;
+                match program {
+                    "exit" => Ok(true),
+                    "pwd" => {
+                        let cwd = self.cwd.clone();
+                        let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
+                        write_to_file(1, &format!("{}\n", cwd))?;
+                        Ok(false)
+                    }
+                    _ => {
+                        let path = self.find_path(program).ok_or(Error::NotFound)?;
+                        // TODO: solve this problem!
+                        let arguments = [program]
+                            .into_iter()
+                            .chain(arguments.iter().skip(1))
+                            .map(|s| *s)
+                            .collect();
+                        self.status = execute(&path, arguments, &Vec::new())?;
+                        Ok(false)
+                    }
                 }
             }
         }
-        Ok(false)
     }
 
     /// Iterates over the PATH variable contents looking for the program

@@ -152,24 +152,24 @@ pub fn native_path(path: &PathBuf) -> Result<CString> {
 }
 
 /// Creates pointers to arguments readable by C, forks and executes the program
-pub fn execute(path: &PathBuf, args: &Vec<&str>, env: &Vec<&str>) -> Result<i32> {
+pub fn execute(path: &PathBuf, args: Vec<&str>, envp: &Vec<&str>) -> Result<i32> {
     let path = native_path(&path)?;
-    let mut argv = Vec::with_capacity(args.len() + 1);
+    let mut native_args = Vec::with_capacity(args.len()); // MUST NOT be shadowed otherwise will be freed
     for arg in args {
-        let native = native_string(arg)?;
-        argv.push(native.as_ptr());
+        native_args.push(native_string(arg)?);
     }
-    argv.push(null());
-    let mut envp = Vec::with_capacity(env.len() + 1);
-    for arg in env {
-        let native = native_string(arg)?;
-        envp.push(native.as_ptr());
+    let mut args: Vec<*const i8> = native_args.iter().map(|s| s.as_ptr()).collect();
+    args.push(null());
+    let mut native_envp = Vec::with_capacity(envp.len()); // MUST NOT be shadowed otherwise will be freed
+    for arg in envp {
+        native_envp.push(native_string(arg)?);
     }
+    let mut envp: Vec<*const i8> = native_envp.iter().map(|s| s.as_ptr()).collect();
     envp.push(null());
     match unsafe { fork() } {
         0 => {
             unsafe {
-                execve(path.as_ptr(), argv.as_ptr(), envp.as_ptr());
+                execve(path.as_ptr(), args.as_ptr(), envp.as_ptr());
             }
             Err(Error::from_errno())
         }
