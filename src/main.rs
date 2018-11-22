@@ -25,7 +25,9 @@ fn main() {
                     write_exit(6, &error);
                 }
             }
-            shell.interpret_rc(".logout").ok();
+            if shell.is_login {
+                shell.interpret_rc(".logout").ok();
+            }
         }
     }
 }
