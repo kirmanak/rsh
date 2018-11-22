@@ -151,6 +151,7 @@ pub fn native_path(path: &PathBuf) -> Result<CString> {
     native_string(path)
 }
 
+/// Creates pointers to arguments readable by C, forks and executes the program
 pub fn execute(path: &PathBuf, args: &Vec<&str>, env: &Vec<&str>) -> Result<i32> {
     let path = native_path(&path)?;
     let mut argv = Vec::with_capacity(args.len() + 1);
@@ -160,8 +161,8 @@ pub fn execute(path: &PathBuf, args: &Vec<&str>, env: &Vec<&str>) -> Result<i32>
     }
     argv.push(null());
     let mut envp = Vec::with_capacity(env.len() + 1);
-    for en in env {
-        let native = native_string(en)?;
+    for arg in env {
+        let native = native_string(arg)?;
         envp.push(native.as_ptr());
     }
     envp.push(null());
@@ -175,7 +176,9 @@ pub fn execute(path: &PathBuf, args: &Vec<&str>, env: &Vec<&str>) -> Result<i32>
         -1 => Err(Error::from_errno()),
         _ => {
             let mut status = 0;
-            unsafe { waitpid(-1, &mut status, 0); }
+            unsafe {
+                waitpid(-1, &mut status, 0);
+            }
             Ok(status)
         }
     }
