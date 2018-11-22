@@ -74,7 +74,7 @@ impl Shell {
                 _ => {
                     let path = self.find_path(arg).ok_or(Error::NotFound)?;
                     let name = path.to_str().ok_or(Error::InvalidUnicode)?;
-                    execute(&path, &vec![name], &Vec::new())?;
+                    self.status = execute(&path, &vec![name], &Vec::new())?;
                 }
             }
         }
