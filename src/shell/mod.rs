@@ -52,9 +52,24 @@ impl Shell {
     /// It is recommended to call this function in a clone of the current shell.
     pub fn interpret(&mut self, path: &PathBuf) -> Result<()> {
         let fdi = open_file(path, libc::O_RDONLY)?;
-        let content = read_file(fdi)?;
-        for line in content.lines() {
-            self.parse(line)?;
+        let header = read_line(fdi)?;
+        if header.starts_with("#!") {
+            fork_process(|| {
+                let name = match path.to_str() {
+                    Some(value) => value,
+                    None => return Error::InvalidUnicode,
+                };
+                let environment: Vec<String> = vars()
+                    .map(|(key, value)| format!("{}={}", key, value))
+                    .collect();
+                let envp: Vec<&str> = environment.iter().map(|s| s.as_str()).collect();
+                execute(path, vec![name], envp)
+            })?;
+        } else {
+            let content = read_file(fdi)?;
+            for line in content.lines() {
+                self.parse(line)?;
+            }
         }
         Ok(())
     }
@@ -104,7 +119,12 @@ impl Shell {
     /// Iterates over the PATH variable contents looking for the program
     fn find_path(&self, name: &str) -> Option<PathBuf> {
         if name.contains('/') {
-            Some(PathBuf::from(name))
+            let path = PathBuf::from(name);
+            if path.is_absolute() {
+                Some(path)
+            } else {
+                self.cwd.join(path).canonicalize().ok()
+            }
         } else {
             let name = OsString::from(name);
             for path in &self.path {

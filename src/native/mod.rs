@@ -156,7 +156,6 @@ fn native_string(string: &str) -> Result<CString> {
 
 /// Creates a null terminated string out of an PathBuf instance
 pub fn native_path(path: &PathBuf) -> Result<CString> {
-    let path = path.canonicalize().map_err(|_| Error::NotFound)?;
     let path = path.to_str().ok_or(Error::InvalidUnicode)?;
     native_string(path)
 }
