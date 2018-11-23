@@ -126,61 +126,53 @@ impl Shell {
         I: Iterator<Item = &'a str>,
     {
         let mut result: Vec<String> = Vec::new();
-        let mut is_double = false;
-        let mut in_double = String::new();
         'outer: loop {
             let mut arg = match arguments.next() {
                 None => break,
                 Some(value) => String::from(value),
             };
-            if arg.starts_with("\"") {
-                is_double = !is_double;
-                arg.remove(0);
-            }
-            if arg.starts_with("$") {
-                arg.remove(0);
-                arg = self.variables.get(&arg).map(String::to_owned).unwrap_or(
-                    var(&arg).unwrap_or(String::new()),
-                );
-            }
-            if !is_double {
-                if let Some(index) = arg.find(">") {
-                    let old_fd = if arg.starts_with(">") {
-                        1
-                    } else {
-                        (&arg[..index]).parse().map_err(|_| Error::NotFound)?
-                    };
-                    let new_fd = if (&arg[index..]).starts_with(">&") {
-                        if arg.ends_with(">&") {
-                            arguments.next().ok_or(Error::NotFound).and_then(
-                                |value: &str| {
-                                    value.parse().map_err(|_| Error::NotFound)
-                                },
-                            )?
-                        } else {
-                            (&arg[(index + 2)..]).parse().map_err(|_| Error::NotFound)?
-                        }
-                    } else {
-                        let path = if arg.len() == 1 {
-                            arguments.next().ok_or(Error::NotFound)?
-                        } else {
-                            &arg[1..]
-                        };
-                        let path = PathBuf::from(path);
-                        open_file(&path, O_CREAT | O_WRONLY, Some(S_IRUSR))?
-                    };
-                    replace_fdi(old_fd, new_fd)?;
-                    continue;
-                }
-            }
-            if arg.ends_with("\"") {
-                is_double = !is_double;
-                arg.pop();
-            }
-            if !is_double {
-                result.push(arg);
+            arg = if let Some(begin) = arg.find("$") {
+                let end = arg[(begin + 1)..]
+                    .rfind(|c: char| !c.is_alphanumeric())
+                    .map(|end| end + begin + 1)
+                    .unwrap_or(arg.len());
+                let var_name = &arg[(begin + 1)..end];
+                let value = self.variables
+                    .get(var_name)
+                    .map(String::to_owned)
+                    .unwrap_or(var(var_name).unwrap_or(String::new()));
+                value
             } else {
-                in_double.push_str(&arg);
+                arg
+            };
+            if let Some(index) = arg.find(">") {
+                let old_fd = if arg.starts_with(">") {
+                    1
+                } else {
+                    (&arg[..index]).parse().map_err(|_| Error::NotFound)?
+                };
+                let new_fd = if (&arg[index..]).starts_with(">&") {
+                    if arg.ends_with(">&") {
+                        arguments.next().ok_or(Error::NotFound).and_then(
+                            |value: &str| {
+                                value.parse().map_err(|_| Error::NotFound)
+                            },
+                        )?
+                    } else {
+                        (&arg[(index + 2)..]).parse().map_err(|_| Error::NotFound)?
+                    }
+                } else {
+                    let path = if arg.len() == 1 {
+                        arguments.next().ok_or(Error::NotFound)?
+                    } else {
+                        &arg[index..]
+                    };
+                    let path = PathBuf::from(path);
+                    open_file(&path, O_CREAT | O_WRONLY, Some(S_IRUSR))?
+                };
+                replace_fdi(old_fd, new_fd)?;
+            } else {
+                result.push(arg);
             }
         }
         Ok(result)
