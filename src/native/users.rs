@@ -1,9 +1,8 @@
-extern crate libc;
-
 use std::path::PathBuf;
-use self::libc::{passwd, getpwuid, getuid, getgid, c_char};
+use super::libc::{passwd, getpwuid, getuid, getgid, c_char};
 
-use {Result, Error, copy_string};
+use super::error::{Result, Error};
+use super::copy_string;
 
 pub type UserId = u32;
 pub type GroupId = u32;

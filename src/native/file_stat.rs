@@ -1,10 +1,10 @@
-extern crate libc;
-
 use std::path::PathBuf;
 
-use self::libc::{stat, c_int, c_char};
+use super::libc::{stat, c_int, c_char};
 
-use {Result, Error, UserId, GroupId, native_path};
+use super::error::{Result, Error};
+use super::native_path;
+use super::users::{UserId, GroupId};
 
 /// Calls stat(2) on the file to determine an owner-user
 pub fn get_file_uid(path: &PathBuf) -> Result<UserId> {

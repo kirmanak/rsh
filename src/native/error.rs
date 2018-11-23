@@ -1,9 +1,36 @@
-extern crate libc;
-
 use std::fmt::{Formatter, Display};
-use self::libc::{c_int, strerror, c_char};
+use super::libc::{c_int, strerror, c_char};
 
-use {write_exit, copy_string};
+use super::{write_exit, copy_string};
+
+/// Forces usage of rsh::native::Error in Results
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Represents all possible errors in this program.
+#[derive(Debug)]
+pub enum Error {
+    InvalidCString,
+    InvalidUnicode,
+    NotFound,
+    Errno(Errno),
+}
+
+impl Error {
+    pub fn from_errno() -> Self {
+        Error::Errno(Errno::last())
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Error::InvalidCString => write!(formatter, "Fail to produce valid C string"),
+            Error::InvalidUnicode => write!(formatter, "Fail to produce valid Unicode string"),
+            Error::NotFound => write!(formatter, "Value was not found"),
+            Error::Errno(reason) => write!(formatter, "{}", reason),
+        }
+    }
+}
 
 /// Wraps errno state and gets the description from the system
 #[derive(Debug)]
@@ -14,12 +41,12 @@ pub struct Errno {
 
 #[cfg(target_os = "solaris")]
 unsafe fn errno() -> *const c_int {
-    self::libc::___errno()
+    super::libc::___errno()
 }
 
 #[cfg(not(target_os = "solaris"))]
 unsafe fn errno() -> *const c_int {
-    self::libc::__errno_location()
+    super::libc::__errno_location()
 }
 
 impl Errno {

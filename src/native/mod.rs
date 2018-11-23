@@ -1,5 +1,9 @@
 extern crate libc;
 
+pub mod error;
+
+use self::error::*;
+
 #[macro_export]
 macro_rules! errno {
     ($status:expr, $result:expr) => {
@@ -20,7 +24,6 @@ macro_rules! unwrap_or_return {
     };
 }
 
-use std::fmt::{Formatter, Display};
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
@@ -28,9 +31,6 @@ use std::process::exit;
 use std::ptr::null;
 use std::iter::once;
 
-use self::errno::Errno;
-
-mod errno;
 pub mod file_stat;
 pub mod users;
 
@@ -156,6 +156,7 @@ fn native_string(string: &str) -> Result<CString> {
 
 /// Creates a null terminated string out of an PathBuf instance
 pub fn native_path(path: &PathBuf) -> Result<CString> {
+    let path = path.canonicalize().map_err(|_| Error::NotFound)?;
     let path = path.to_str().ok_or(Error::InvalidUnicode)?;
     native_string(path)
 }
@@ -204,33 +205,4 @@ pub fn execute(path: &PathBuf, args: Vec<&str>, envp: Vec<&str>) -> Error {
         execve(path.as_ptr(), args.as_ptr(), envp.as_ptr());
     }
     Error::from_errno()
-}
-
-/// Forces usage of rsh::native::Error in Results
-pub type Result<T> = std::result::Result<T, Error>;
-
-/// Represents all possible errors in this program.
-#[derive(Debug)]
-pub enum Error {
-    InvalidCString,
-    InvalidUnicode,
-    NotFound,
-    Errno(Errno),
-}
-
-impl Error {
-    fn from_errno() -> Self {
-        Error::Errno(Errno::last())
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        match self {
-            Error::InvalidCString => write!(formatter, "Fail to produce valid C string"),
-            Error::InvalidUnicode => write!(formatter, "Fail to produce valid Unicode string"),
-            Error::NotFound => write!(formatter, "Value was not found"),
-            Error::Errno(reason) => write!(formatter, "{}", reason),
-        }
-    }
 }
