@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::collections::HashMap;
 use std::env::{args, var};
 use std::ffi::OsString;
+use std::iter::once;
 
 use super::*;
 
@@ -62,11 +63,10 @@ impl Shell {
     /// Parses the command and executes it.
     /// Returns true if reading should be stopped.
     fn parse(&mut self, line: &str) -> Result<bool> {
-        let arguments = split_arguments(line);
-        match arguments.get(0) {
+        let mut arguments = line.split_whitespace();
+        match arguments.next() {
             None => Ok(false),
             Some(program) => {
-                let program = *program;
                 match program {
                     "exit" => Ok(true),
                     "pwd" => {
@@ -76,14 +76,14 @@ impl Shell {
                         Ok(false)
                     }
                     _ => {
-                        let path = self.find_path(program).ok_or(Error::NotFound)?;
-                        // TODO: solve this problem!
-                        let arguments = [program]
-                            .into_iter()
-                            .chain(arguments.iter().skip(1))
-                            .map(|s| *s)
-                            .collect();
-                        self.status = execute(&path, arguments, &Vec::new())?;
+                        self.status = fork_process(|| {
+                            let path = match self.find_path(program) {
+                                None => return Error::NotFound,
+                                Some(value) => value,
+                            };
+                            let arguments = once(program).chain(arguments).collect();
+                            execute(&path, arguments, &Vec::new())
+                        })?;
                         Ok(false)
                     }
                 }

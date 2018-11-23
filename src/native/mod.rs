@@ -11,12 +11,22 @@ macro_rules! errno {
     };
 }
 
+macro_rules! unwrap_or_return {
+    ($result:expr) => {
+        match $result {
+            Ok(value) => value,
+            Err(reason) => return reason,
+        }
+    };
+}
+
 use std::fmt::{Formatter, Display};
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
 use std::path::PathBuf;
 use std::process::exit;
 use std::ptr::null;
+use std::iter::once;
 
 use self::errno::Errno;
 
@@ -151,28 +161,10 @@ pub fn native_path(path: &PathBuf) -> Result<CString> {
     native_string(path)
 }
 
-/// Creates pointers to arguments readable by C, forks and executes the program
-pub fn execute(path: &PathBuf, args: Vec<&str>, envp: &Vec<&str>) -> Result<i32> {
-    let path = native_path(&path)?;
-    let mut native_args = Vec::with_capacity(args.len()); // MUST NOT be shadowed otherwise will be freed
-    for arg in args {
-        native_args.push(native_string(arg)?);
-    }
-    let mut args: Vec<*const i8> = native_args.iter().map(|s| s.as_ptr()).collect();
-    args.push(null());
-    let mut native_envp = Vec::with_capacity(envp.len()); // MUST NOT be shadowed otherwise will be freed
-    for arg in envp {
-        native_envp.push(native_string(arg)?);
-    }
-    let mut envp: Vec<*const i8> = native_envp.iter().map(|s| s.as_ptr()).collect();
-    envp.push(null());
+/// Forks the current process and calls the provided function
+pub fn fork_process<F: FnOnce() -> Error>(actions: F) -> Result<i32> {
     match unsafe { fork() } {
-        0 => {
-            unsafe {
-                execve(path.as_ptr(), args.as_ptr(), envp.as_ptr());
-            }
-            Err(Error::from_errno())
-        }
+        0 => Err(actions()), // if we returned from actions, something went wrong
         -1 => Err(Error::from_errno()),
         _ => {
             let mut status = 0;
@@ -182,6 +174,37 @@ pub fn execute(path: &PathBuf, args: Vec<&str>, envp: &Vec<&str>) -> Result<i32>
             Ok(status)
         }
     }
+}
+
+/// Creates pointers to arguments readable by C and executes the program
+pub fn execute(path: &PathBuf, args: Vec<&str>, envp: &Vec<&str>) -> Error {
+    let path = unwrap_or_return!(native_path(path));
+    // MUST NOT be shadowed otherwise will be freed
+    let mut native_args = Vec::with_capacity(args.len());
+    for arg in args {
+        let native = unwrap_or_return!(native_string(arg));
+        native_args.push(native);
+    }
+    let args: Vec<*const i8> = native_args
+        .iter()
+        .map(|s| s.as_ptr())
+        .chain(once(null()))
+        .collect();
+    // MUST NOT be shadowed otherwise will be freed
+    let mut native_envp = Vec::with_capacity(envp.len());
+    for arg in envp {
+        let native = unwrap_or_return!(native_string(arg));
+        native_envp.push(native);
+    }
+    let envp: Vec<*const i8> = native_envp
+        .iter()
+        .map(|s| s.as_ptr())
+        .chain(once(null()))
+        .collect();
+    unsafe {
+        execve(path.as_ptr(), args.as_ptr(), envp.as_ptr());
+    }
+    Error::from_errno()
 }
 
 /// Forces usage of rsh::native::Error in Results
