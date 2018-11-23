@@ -131,23 +131,7 @@ impl Shell {
                 None => break,
                 Some(value) => value,
             };
-            if arg.starts_with("'") {
-                let mut argument = String::from(&arg[1..]);
-                loop {
-                    argument.push(' ');
-                    arg = match arguments.next() {
-                        None => break 'outer,
-                        Some(value) => value,
-                    };
-                    if arg.ends_with("'") {
-                        argument.push_str(&arg[..arg.len() - 1]);
-                        break;
-                    } else {
-                        argument.push_str(arg);
-                    }
-                }
-                result.push(argument);
-            } else if arg.starts_with("\"") {
+            if arg.starts_with("\"") {
                 let argument = if arg.ends_with("\"") {
                     String::from(&arg[1..arg.len() - 1])
                 } else {
@@ -175,14 +159,26 @@ impl Shell {
                 result.push(argument);
             } else if arg.starts_with(">") {
                 if arg.starts_with(">&") {
-                    let new_fd = (&arg[2..]).parse().map_err(|_| Error::NotFound)?;
+                    let new_fd = if arg.len() == 2 {
+                        match arguments.next() {
+                            None => return Err(Error::NotFound),
+                            Some(value) => value,
+                        }
+                    } else {
+                        (&arg[2..])
+                    };
+                    let new_fd = new_fd.parse().map_err(|_| Error::NotFound)?;
                     replace_fdi(1, new_fd)?;
                 } else {
-                    let fdi = open_file(
-                        &PathBuf::from(arguments.next().unwrap()),
-                        O_CREAT | O_WRONLY,
-                        Some(S_IRUSR),
-                    )?;
+                    let path = if arg.len() == 1 {
+                        match arguments.next() {
+                            None => return Err(Error::NotFound),
+                            Some(value) => PathBuf::from(value),
+                        }
+                    } else {
+                        PathBuf::from(&arg[1..])
+                    };
+                    let fdi = open_file(&path, O_CREAT | O_WRONLY, Some(S_IRUSR))?;
                     replace_fdi(1, fdi)?;
                 }
             } else {
