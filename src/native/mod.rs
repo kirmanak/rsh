@@ -176,7 +176,7 @@ pub fn fork_process<F: FnOnce() -> Error>(actions: F) -> Result<i32> {
 }
 
 /// Creates pointers to arguments readable by C and executes the program
-pub fn execute(path: &PathBuf, args: Vec<&str>, envp: &Vec<&str>) -> Error {
+pub fn execute(path: &PathBuf, args: Vec<&str>, envp: Vec<&str>) -> Error {
     let path = unwrap_or_return!(native_path(path));
     // MUST NOT be shadowed otherwise will be freed
     let mut native_args = Vec::with_capacity(args.len());

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
-use std::env::{args, var};
+use std::env::{args, var, vars};
 use std::ffi::OsString;
 use std::iter::once;
 
@@ -60,29 +60,40 @@ impl Shell {
     /// Returns true if reading should be stopped.
     fn parse(&mut self, line: &str) -> Result<bool> {
         let mut arguments = line.split_whitespace();
-        match arguments.next() {
-            None => Ok(false),
-            Some(program) => {
-                match program {
-                    "exit" => Ok(true),
-                    "pwd" => {
-                        let cwd = self.cwd.clone();
-                        let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
-                        write_to_file(1, &format!("{}\n", cwd))?;
-                        Ok(false)
-                    }
-                    _ => {
-                        self.status = fork_process(|| {
-                            let path = match self.find_path(program) {
-                                None => return Error::NotFound,
-                                Some(value) => value,
-                            };
-                            let arguments = once(program).chain(arguments).collect();
-                            execute(&path, arguments, &Vec::new())
-                        })?;
-                        Ok(false)
-                    }
-                }
+        let environment: Vec<String> = vars()
+            .map(|(key, value)| format!("{}={}", key, value))
+            .collect();
+        let mut envp: Vec<&str> = environment.iter().map(|s| s.as_str()).collect();
+        let mut argument;
+        loop {
+            argument = match arguments.next() {
+                Some(value) => value,
+                None => return Err(Error::NotFound),
+            };
+            if argument.contains('=') {
+                envp.push(argument);
+            } else {
+                break;
+            }
+        }
+        match argument {
+            "exit" => Ok(true),
+            "pwd" => {
+                let cwd = self.cwd.clone();
+                let cwd = cwd.to_str().ok_or(Error::InvalidUnicode)?;
+                write_to_file(1, &format!("{}\n", cwd))?;
+                Ok(false)
+            }
+            _ => {
+                self.status = fork_process(|| {
+                    let path = match self.find_path(argument) {
+                        None => return Error::NotFound,
+                        Some(value) => value,
+                    };
+                    let arguments = once(argument).chain(arguments).collect();
+                    execute(&path, arguments, envp)
+                })?;
+                Ok(false)
             }
         }
     }
