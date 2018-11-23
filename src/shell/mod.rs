@@ -6,10 +6,6 @@ use std::iter::once;
 
 use super::*;
 
-use self::splitter::split_arguments;
-
-mod splitter;
-
 /// The structure represents the state of a shell. First of all, it stores variables.
 pub struct Shell {
     pub variables: HashMap<String, String>,

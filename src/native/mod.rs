@@ -33,7 +33,6 @@ use self::errno::Errno;
 mod errno;
 pub mod file_stat;
 pub mod users;
-pub mod term;
 
 use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write,
                  execve, fork, waitpid};
