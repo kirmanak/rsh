@@ -167,14 +167,15 @@ impl Shell {
 
     /// Iterates over arguments given to the shell
     pub fn handle_arguments(&mut self) -> Result<()> {
-        let args: Vec<PathBuf> = self.argv
-            .iter()
-            .skip(1)
-            .filter(|arg| !arg.starts_with('-'))
-            .map(PathBuf::from)
-            .collect();
-        for arg in &args {
-            self.interpret(&arg)?;
+        let args: Vec<String> = self.argv.iter().skip(1).cloned().collect();
+        for arg in args {
+            if arg == "-" {
+                self.interact()?;
+            } else if arg.starts_with("-") {
+                continue;
+            } else {
+                self.interpret(&PathBuf::from(arg))?;
+            }
         }
         Ok(())
     }
