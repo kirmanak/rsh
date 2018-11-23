@@ -56,13 +56,8 @@ pub fn get_hostname() -> Result<String> {
 /// These constants are available in libc crate.
 pub fn open_file(path: &PathBuf, flags: i32, mode: Option<u32>) -> Result<RawFd> {
     let path = native_path(path)?;
-    println!("Flags: {}", flags);
     let status: c_int = match mode {
-        Some(mode) => {
-            println!("mode: {}", mode);
-            println!("path: {}", path.to_string_lossy());
-            unsafe { open(path.into_raw() as *const c_char, flags, mode) }
-        }
+        Some(mode) => unsafe { open(path.into_raw() as *const c_char, flags, mode) },
         None => unsafe { open(path.into_raw() as *const c_char, flags) },
     };
     errno!(status, status)

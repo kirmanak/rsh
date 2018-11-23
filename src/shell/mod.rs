@@ -126,49 +126,43 @@ impl Shell {
         I: Iterator<Item = &'a str>,
     {
         let mut result: Vec<String> = Vec::new();
+        let mut is_double = false;
         'outer: loop {
             let mut arg = match arguments.next() {
                 None => break,
-                Some(value) => value,
+                Some(value) => String::from(value),
             };
             if arg.starts_with("\"") {
-                let argument = if arg.ends_with("\"") {
-                    String::from(&arg[1..arg.len() - 1])
-                } else {
-                    let mut argument = String::from(&arg[1..]);
-                    loop {
-                        argument.push(' ');
-                        arg = match arguments.next() {
-                            None => break 'outer,
-                            Some(value) => value,
-                        };
-                        if arg.starts_with("$") {
-                            argument.push_str(
-                                self.variables.get(&arg[1..]).unwrap_or(&String::from("")),
-                            );
-                        }
-                        if arg.ends_with("\"") {
-                            argument.push_str(&arg[..arg.len() - 1]);
-                            break;
-                        } else {
-                            argument.push_str(arg);
-                        }
-                    }
-                    argument
-                };
-                result.push(argument);
-            } else if arg.starts_with(">") {
-                if arg.starts_with(">&") {
-                    let new_fd = if arg.len() == 2 {
-                        match arguments.next() {
-                            None => return Err(Error::NotFound),
-                            Some(value) => value,
-                        }
-                    } else {
-                        (&arg[2..])
+                is_double = !is_double;
+                arg.remove(0);
+            }
+            if arg.starts_with("$") {
+                arg.remove(0);
+                arg = self.variables.get(&arg).map(String::to_owned).unwrap_or(
+                    var(&arg).unwrap_or(String::new()),
+                );
+            }
+            if !is_double && arg.contains(">") {
+                if arg.contains(">&") {
+                    let index = match arg.find(">&") {
+                        Some(value) => value,
+                        None => continue,
                     };
-                    let new_fd = new_fd.parse().map_err(|_| Error::NotFound)?;
-                    replace_fdi(1, new_fd)?;
+                    let old_fd = if arg.starts_with(">&") {
+                        1
+                    } else {
+                        (&arg[..index]).parse().map_err(|_| Error::NotFound)?
+                    };
+                    let new_fd: i32 = if arg.ends_with(">&") {
+                        arguments.next().ok_or(Error::NotFound).and_then(
+                            |value: &str| {
+                                value.parse().map_err(|_| Error::NotFound)
+                            },
+                        )?
+                    } else {
+                        (&arg[(index + 2)..]).parse().map_err(|_| Error::NotFound)?
+                    };
+                    replace_fdi(old_fd, new_fd)?;
                 } else {
                     let path = if arg.len() == 1 {
                         match arguments.next() {
@@ -182,7 +176,10 @@ impl Shell {
                     replace_fdi(1, fdi)?;
                 }
             } else {
-                result.push(String::from(arg));
+                result.push(arg.clone());
+            }
+            if arg.ends_with("\"") {
+                is_double = !is_double;
             }
         }
         Ok(result)
