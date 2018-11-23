@@ -1,5 +1,3 @@
-extern crate libc;
-
 pub mod error;
 
 use self::error::*;
@@ -34,8 +32,8 @@ use std::iter::once;
 pub mod file_stat;
 pub mod users;
 
-use self::libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write,
-                 execve, fork, waitpid};
+use libc::{c_char, c_int, c_void, getcwd, gethostname, open, read, ssize_t, strlen, write, execve,
+           fork, waitpid, dup2, PATH_MAX, strcpy};
 
 /// Gets the name of the host using gethostname() from libc.
 /// Returns None in case of error in gethostname() or in String::from_utf8().
@@ -56,9 +54,17 @@ pub fn get_hostname() -> Result<String> {
 /// Opens the file which is located on the provided path with the provided flags.
 /// More information about the flags is in open(2).
 /// These constants are available in libc crate.
-pub fn open_file(path: &PathBuf, flags: i32) -> Result<RawFd> {
+pub fn open_file(path: &PathBuf, flags: i32, mode: Option<u32>) -> Result<RawFd> {
     let path = native_path(path)?;
-    let status: c_int = unsafe { open(path.into_raw() as *const c_char, flags) };
+    println!("Flags: {}", flags);
+    let status: c_int = match mode {
+        Some(mode) => {
+            println!("mode: {}", mode);
+            println!("path: {}", path.to_string_lossy());
+            unsafe { open(path.into_raw() as *const c_char, flags, mode) }
+        }
+        None => unsafe { open(path.into_raw() as *const c_char, flags) },
+    };
     errno!(status, status)
 }
 
@@ -72,7 +78,7 @@ pub fn write_to_file(fd: RawFd, text: &str) -> Result<isize> {
 
 /// Gets current working dir from the system
 pub fn get_current_dir() -> Result<PathBuf> {
-    let mut buf = vec![0; libc::PATH_MAX as usize];
+    let mut buf = vec![0; PATH_MAX as usize];
     let name_ptr = unsafe { getcwd(buf.as_mut_ptr() as *mut c_char, buf.capacity()) };
     if name_ptr.is_null() {
         Err(Error::Errno(Errno::last()))
@@ -140,8 +146,13 @@ pub fn write_exit(exit_code: ExitCode, text: &str) -> ! {
 pub unsafe fn copy_string(ptr: *const c_char) -> Result<String> {
     let len = strlen(ptr);
     let mut buf = vec![0; len];
-    libc::strcpy(buf.as_mut_ptr() as *mut c_char, ptr);
+    strcpy(buf.as_mut_ptr() as *mut c_char, ptr);
     read_buf(buf)
+}
+
+pub fn replace_fdi(to_replace: RawFd, replacement: RawFd) -> Result<()> {
+    let status = unsafe { dup2(replacement, to_replace) };
+    errno!(status, ())
 }
 
 /// Wraps Vec<u8> to String
@@ -176,12 +187,12 @@ pub fn fork_process<F: FnOnce() -> Error>(actions: F) -> Result<i32> {
 }
 
 /// Creates pointers to arguments readable by C and executes the program
-pub fn execute(path: &PathBuf, args: Vec<&str>, envp: Vec<&str>) -> Error {
+pub fn execute(path: &PathBuf, args: Vec<String>, envp: Vec<String>) -> Error {
     let path = unwrap_or_return!(native_path(path));
     // MUST NOT be shadowed otherwise will be freed
     let mut native_args = Vec::with_capacity(args.len());
     for arg in args {
-        let native = unwrap_or_return!(native_string(arg));
+        let native = unwrap_or_return!(native_string(&arg));
         native_args.push(native);
     }
     let args: Vec<*const i8> = native_args
@@ -192,7 +203,7 @@ pub fn execute(path: &PathBuf, args: Vec<&str>, envp: Vec<&str>) -> Error {
     // MUST NOT be shadowed otherwise will be freed
     let mut native_envp = Vec::with_capacity(envp.len());
     for arg in envp {
-        let native = unwrap_or_return!(native_string(arg));
+        let native = unwrap_or_return!(native_string(&arg));
         native_envp.push(native);
     }
     let envp: Vec<*const i8> = native_envp

@@ -4,6 +4,8 @@ use std::env::{args, var, vars};
 use std::ffi::OsString;
 use std::iter::once;
 
+use libc::{O_CREAT, O_WRONLY, O_RDONLY, S_IRUSR};
+
 use native::*;
 use native::users::*;
 use native::error::*;
@@ -51,19 +53,18 @@ impl Shell {
     /// All changes in shell variables are saved!
     /// It is recommended to call this function in a clone of the current shell.
     pub fn interpret(&mut self, path: &PathBuf) -> Result<()> {
-        let fdi = open_file(path, libc::O_RDONLY)?;
+        let fdi = open_file(path, O_RDONLY, None)?;
         let header = read_line(fdi)?;
         if header.starts_with("#!") {
             fork_process(|| {
                 let name = match path.to_str() {
-                    Some(value) => value,
+                    Some(value) => String::from(value),
                     None => return Error::InvalidUnicode,
                 };
                 let environment: Vec<String> = vars()
                     .map(|(key, value)| format!("{}={}", key, value))
                     .collect();
-                let envp: Vec<&str> = environment.iter().map(|s| s.as_str()).collect();
-                execute(path, vec![name], envp)
+                execute(path, vec![name], environment)
             })?;
         } else {
             let content = read_file(fdi)?;
@@ -78,10 +79,9 @@ impl Shell {
     /// Returns true if reading should be stopped.
     fn parse(&mut self, line: &str) -> Result<bool> {
         let mut arguments = line.split_whitespace();
-        let environment: Vec<String> = vars()
+        let mut environment: Vec<String> = vars()
             .map(|(key, value)| format!("{}={}", key, value))
             .collect();
-        let mut envp: Vec<&str> = environment.iter().map(|s| s.as_str()).collect();
         let mut argument;
         loop {
             argument = match arguments.next() {
@@ -89,7 +89,7 @@ impl Shell {
                 None => return Err(Error::NotFound),
             };
             if argument.contains('=') {
-                envp.push(argument);
+                environment.push(String::from(argument));
             } else {
                 break;
             }
@@ -108,12 +108,88 @@ impl Shell {
                         None => return Error::NotFound,
                         Some(value) => value,
                     };
-                    let arguments = once(argument).chain(arguments).collect();
-                    execute(&path, arguments, envp)
+                    let arguments = match self.parse_shell(arguments) {
+                        Err(reason) => return reason,
+                        Ok(value) => value,
+                    };
+                    let slices = arguments.into_iter();
+                    let arguments = once(argument.to_owned()).chain(slices).collect();
+                    execute(&path, arguments, environment)
                 })?;
                 Ok(false)
             }
         }
+    }
+
+    fn parse_shell<'a, I>(&self, mut arguments: I) -> Result<Vec<String>>
+    where
+        I: Iterator<Item = &'a str>,
+    {
+        let mut result: Vec<String> = Vec::new();
+        'outer: loop {
+            let mut arg = match arguments.next() {
+                None => break,
+                Some(value) => value,
+            };
+            if arg.starts_with("'") {
+                let mut argument = String::from(&arg[1..]);
+                loop {
+                    argument.push(' ');
+                    arg = match arguments.next() {
+                        None => break 'outer,
+                        Some(value) => value,
+                    };
+                    if arg.ends_with("'") {
+                        argument.push_str(&arg[..arg.len() - 1]);
+                        break;
+                    } else {
+                        argument.push_str(arg);
+                    }
+                }
+                result.push(argument);
+            } else if arg.starts_with("\"") {
+                let argument = if arg.ends_with("\"") {
+                    String::from(&arg[1..arg.len() - 1])
+                } else {
+                    let mut argument = String::from(&arg[1..]);
+                    loop {
+                        argument.push(' ');
+                        arg = match arguments.next() {
+                            None => break 'outer,
+                            Some(value) => value,
+                        };
+                        if arg.starts_with("$") {
+                            argument.push_str(
+                                self.variables.get(&arg[1..]).unwrap_or(&String::from("")),
+                            );
+                        }
+                        if arg.ends_with("\"") {
+                            argument.push_str(&arg[..arg.len() - 1]);
+                            break;
+                        } else {
+                            argument.push_str(arg);
+                        }
+                    }
+                    argument
+                };
+                result.push(argument);
+            } else if arg.starts_with(">") {
+                if arg.starts_with(">&") {
+                    let new_fd = (&arg[2..]).parse().map_err(|_| Error::NotFound)?;
+                    replace_fdi(1, new_fd)?;
+                } else {
+                    let fdi = open_file(
+                        &PathBuf::from(arguments.next().unwrap()),
+                        O_CREAT | O_WRONLY,
+                        Some(S_IRUSR),
+                    )?;
+                    replace_fdi(1, fdi)?;
+                }
+            } else {
+                result.push(String::from(arg));
+            }
+        }
+        Ok(result)
     }
 
     /// Iterates over the PATH variable contents looking for the program

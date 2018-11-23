@@ -1,3 +1,5 @@
+extern crate libc;
+
 use shell::Shell;
 
 use native::write_exit;

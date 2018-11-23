@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::libc::{stat, c_int, c_char};
+use libc::{stat, c_int, c_char};
 
 use super::error::{Result, Error};
 use super::native_path;

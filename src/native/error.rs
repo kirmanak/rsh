@@ -1,5 +1,5 @@
 use std::fmt::{Formatter, Display};
-use super::libc::{c_int, strerror, c_char};
+use libc::{c_int, strerror, c_char};
 
 use super::{write_exit, copy_string};
 
@@ -41,12 +41,12 @@ pub struct Errno {
 
 #[cfg(target_os = "solaris")]
 unsafe fn errno() -> *const c_int {
-    super::libc::___errno()
+    libc::___errno()
 }
 
 #[cfg(not(target_os = "solaris"))]
 unsafe fn errno() -> *const c_int {
-    super::libc::__errno_location()
+    libc::__errno_location()
 }
 
 impl Errno {

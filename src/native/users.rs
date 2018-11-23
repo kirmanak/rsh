@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use super::libc::{passwd, getpwuid, getuid, getgid, c_char};
+use libc::{passwd, getpwuid, getuid, getgid, c_char};
 
 use super::error::{Result, Error};
 use super::copy_string;
