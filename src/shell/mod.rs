@@ -127,6 +127,7 @@ impl Shell {
     {
         let mut result: Vec<String> = Vec::new();
         let mut is_double = false;
+        let mut in_double = String::new();
         'outer: loop {
             let mut arg = match arguments.next() {
                 None => break,
@@ -142,44 +143,44 @@ impl Shell {
                     var(&arg).unwrap_or(String::new()),
                 );
             }
-            if !is_double && arg.contains(">") {
-                if arg.contains(">&") {
-                    let index = match arg.find(">&") {
-                        Some(value) => value,
-                        None => continue,
-                    };
-                    let old_fd = if arg.starts_with(">&") {
+            if !is_double {
+                if let Some(index) = arg.find(">") {
+                    let old_fd = if arg.starts_with(">") {
                         1
                     } else {
                         (&arg[..index]).parse().map_err(|_| Error::NotFound)?
                     };
-                    let new_fd: i32 = if arg.ends_with(">&") {
-                        arguments.next().ok_or(Error::NotFound).and_then(
-                            |value: &str| {
-                                value.parse().map_err(|_| Error::NotFound)
-                            },
-                        )?
-                    } else {
-                        (&arg[(index + 2)..]).parse().map_err(|_| Error::NotFound)?
-                    };
-                    replace_fdi(old_fd, new_fd)?;
-                } else {
-                    let path = if arg.len() == 1 {
-                        match arguments.next() {
-                            None => return Err(Error::NotFound),
-                            Some(value) => PathBuf::from(value),
+                    let new_fd = if (&arg[index..]).starts_with(">&") {
+                        if arg.ends_with(">&") {
+                            arguments.next().ok_or(Error::NotFound).and_then(
+                                |value: &str| {
+                                    value.parse().map_err(|_| Error::NotFound)
+                                },
+                            )?
+                        } else {
+                            (&arg[(index + 2)..]).parse().map_err(|_| Error::NotFound)?
                         }
                     } else {
-                        PathBuf::from(&arg[1..])
+                        let path = if arg.len() == 1 {
+                            arguments.next().ok_or(Error::NotFound)?
+                        } else {
+                            &arg[1..]
+                        };
+                        let path = PathBuf::from(path);
+                        open_file(&path, O_CREAT | O_WRONLY, Some(S_IRUSR))?
                     };
-                    let fdi = open_file(&path, O_CREAT | O_WRONLY, Some(S_IRUSR))?;
-                    replace_fdi(1, fdi)?;
+                    replace_fdi(old_fd, new_fd)?;
+                    continue;
                 }
-            } else {
-                result.push(arg.clone());
             }
             if arg.ends_with("\"") {
                 is_double = !is_double;
+                arg.pop();
+            }
+            if !is_double {
+                result.push(arg);
+            } else {
+                in_double.push_str(&arg);
             }
         }
         Ok(result)
